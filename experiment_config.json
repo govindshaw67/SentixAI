@@ -1,0 +1,25 @@
+{
+  "seed": 42,
+  "dataset": "data/IMDB Dataset.csv",
+  "output_dir": "outputs/experiments",
+  "device": "cpu",
+  "shared": {
+    "max_length": 200,
+    "max_vocab_size": 20000,
+    "min_frequency": 2,
+    "epochs": 3,
+    "patience": 1,
+    "learning_rate": 0.001,
+    "batch_size": 64,
+    "dropout": 0.35,
+    "hidden_dim": 128,
+    "embedding_dim": 128,
+    "optimizer": "adamw",
+    "weight_decay": 0.0001
+  },
+  "model_comparison": ["mlp", "lstm", "bilstm", "bilstm_attention"],
+  "hyperparameter_experiments": [
+    {"name": "attention_lr_0005_dropout_020", "model": "bilstm_attention", "learning_rate": 0.0005, "dropout": 0.20},
+    {"name": "attention_hidden_64_embedding_64_batch_128", "model": "bilstm_attention", "hidden_dim": 64, "embedding_dim": 64, "batch_size": 128}
+  ]
+}
