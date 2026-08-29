@@ -1,0 +1,12 @@
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.5
+torch>=2.3
+matplotlib>=3.8
+seaborn>=0.13
+datasets>=3.0
+fastapi>=0.115
+uvicorn>=0.30
+lime>=0.2.0.1
+shap>=0.46
+python-multipart>=0.0.9
