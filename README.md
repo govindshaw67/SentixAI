@@ -2,6 +2,8 @@
 
 **Explainable Deep Learning for Sentiment and Emotion Analysis**
 
+**Live demo:** [https://sentixai-01cn.onrender.com](https://sentixai-01cn.onrender.com)
+
 ## Abstract
 
 SentixAI is a local web application for English sentiment and emotion analysis. It uses independently trained BiLSTM-attention models, shows confidence and class probabilities, and offers attention, LIME, and SHAP explanations. It also supports batch CSV processing and a reproducible neural-model comparison study.
