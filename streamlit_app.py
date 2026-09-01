@@ -1,7 +1,7 @@
-"""SentixAI Analytics: Explainable Deep Learning Dashboard for Sentiment & Emotion Analysis.
+"""SentixAI Platform: Explainable Deep Learning System for Sentiment & Emotion Analysis.
 
-Powered by BiLSTM with Additive Attention, LIME, and SHAP.
-Ready for deployment on Streamlit Community Cloud.
+Architecture: Bidirectional LSTM with Masked Additive Attention, LIME, and Kernel SHAP.
+Configured for production deployment on Streamlit Community Cloud.
 """
 
 from __future__ import annotations
@@ -19,104 +19,90 @@ import torch
 from sentixai_inference import SavedTextClassifier
 from sentixai_xai import attention_explanation, lime_explanation, shap_explanation
 
-# Root paths resolution
+# Path definitions
 ROOT = Path(__file__).resolve().parent
 
 st.set_page_config(
-    page_title="SentixAI · Explainable AI Dashboard",
-    page_icon="🧠",
+    page_title="SentixAI | Explainable Deep Learning Platform",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for executive modern styling
+# Professional CSS
 st.markdown(
     """
     <style>
-    /* Metric & Card Styling */
     .sentix-hero {
-        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
-        border: 1px solid rgba(99, 102, 241, 0.25);
-        border-radius: 16px;
-        padding: 24px 28px;
-        margin-bottom: 24px;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 20px 24px;
+        margin-bottom: 20px;
     }
     .sentix-hero h1 {
-        font-size: 2.2rem;
-        font-weight: 800;
-        margin: 0 0 8px 0;
-        background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-size: 1.85rem;
+        font-weight: 700;
+        margin: 0 0 6px 0;
+        color: #f8fafc;
+        letter-spacing: -0.01em;
     }
     .sentix-hero p {
         color: #94a3b8;
-        font-size: 1.05rem;
+        font-size: 0.98rem;
         margin: 0;
     }
     .badge-pill {
         display: inline-block;
-        padding: 4px 10px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        letter-spacing: 0.05em;
+        padding: 3px 8px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
-        border-radius: 9999px;
+        border-radius: 4px;
         margin-right: 6px;
-        background: rgba(56, 189, 248, 0.15);
-        color: #38bdf8;
-        border: 1px solid rgba(56, 189, 248, 0.3);
-    }
-    .status-card {
-        background: rgba(30, 41, 59, 0.6);
-        border: 1px solid rgba(148, 163, 184, 0.15);
-        border-radius: 12px;
-        padding: 16px 20px;
-        margin-bottom: 16px;
+        margin-bottom: 8px;
+        background: #1e293b;
+        color: #94a3b8;
+        border: 1px solid #334155;
     }
     .pred-card {
-        background: rgba(15, 23, 42, 0.8);
-        border-radius: 14px;
-        padding: 20px;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        background: #111827;
+        border-radius: 6px;
+        padding: 16px 20px;
+        border: 1px solid #1f2937;
+        margin-bottom: 16px;
     }
     .pred-positive {
-        border-left: 5px solid #10b981;
+        border-left: 4px solid #10b981;
     }
     .pred-negative {
-        border-left: 5px solid #ef4444;
+        border-left: 4px solid #ef4444;
     }
     .pred-emotion {
-        border-left: 5px solid #8b5cf6;
+        border-left: 4px solid #6366f1;
     }
     .attention-box {
-        background: rgba(15, 23, 42, 0.9);
-        border: 1px solid rgba(99, 102, 241, 0.25);
-        border-radius: 12px;
-        padding: 18px 22px;
-        line-height: 2.2;
-        font-size: 1.15rem;
-        margin: 12px 0 20px 0;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 16px 18px;
+        line-height: 2.1;
+        font-size: 1.05rem;
+        margin: 10px 0 16px 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     .attn-chip {
         display: inline-block;
-        padding: 2px 8px;
-        margin: 2px 4px;
-        border-radius: 6px;
+        padding: 2px 7px;
+        margin: 2px 3px;
+        border-radius: 4px;
         font-weight: 500;
-        transition: transform 0.15s ease;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .attn-chip:hover {
-        transform: scale(1.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .info-note {
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         color: #94a3b8;
-        font-style: italic;
-        margin-top: 6px;
+        margin-top: 4px;
     }
     </style>
     """,
@@ -124,7 +110,7 @@ st.markdown(
 )
 
 
-@st.cache_resource(show_spinner="Loading PyTorch BiLSTM Sentiment Model...")
+@st.cache_resource(show_spinner="Loading Sentiment Classifier...")
 def get_sentiment_model() -> SavedTextClassifier:
     """Load sentiment BiLSTM attention model with caching."""
     artifact_dir = ROOT / "outputs/artifacts"
@@ -133,7 +119,7 @@ def get_sentiment_model() -> SavedTextClassifier:
     return SavedTextClassifier(artifact_dir, "bilstm_attention.pt")
 
 
-@st.cache_resource(show_spinner="Loading PyTorch BiLSTM Emotion Model...")
+@st.cache_resource(show_spinner="Loading Emotion Classifier...")
 def get_emotion_model() -> SavedTextClassifier:
     """Load emotion BiLSTM attention model with caching."""
     artifact_dir = ROOT / "outputs/emotion/artifacts"
@@ -144,7 +130,7 @@ def get_emotion_model() -> SavedTextClassifier:
 
 @st.cache_data
 def load_evaluation_data() -> dict[str, Any]:
-    """Load test evaluation reports and training history."""
+    """Load held-out evaluation reports and training history."""
     data = {}
     sentiment_path = ROOT / "outputs/results/evaluation.json"
     if not sentiment_path.exists():
@@ -164,7 +150,7 @@ def load_evaluation_data() -> dict[str, Any]:
     return data
 
 
-# Header Hero Section
+# Header Section
 st.markdown(
     """
     <div class="sentix-hero">
@@ -172,81 +158,78 @@ st.markdown(
             <span class="badge-pill">Deep Learning</span>
             <span class="badge-pill">BiLSTM + Attention</span>
             <span class="badge-pill">Explainable AI</span>
-            <span class="badge-pill">PyTorch 2.x</span>
+            <span class="badge-pill">PyTorch Inference</span>
         </div>
         <h1>SentixAI Analytics</h1>
-        <p>Explainable Deep Learning Dashboard for Sentiment & Emotion Analysis with Additive Attention, LIME, and SHAP interpretability.</p>
+        <p>Explainable deep learning platform for text sentiment and emotion classification with attention mapping, LIME, and Kernel SHAP attribution.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# Sidebar
+# Sidebar Configuration
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=64)
-    st.title("SentixAI Controls")
-    st.caption("v4.0 · B.Tech CSE-AIML Project")
+    st.markdown("### System Controls")
+    st.caption("SentixAI Platform Version 4.0")
     st.divider()
 
-    st.subheader("Model Status")
+    st.markdown("#### Model Status")
     try:
         sent_clf = get_sentiment_model()
-        st.success("Sentiment Model: Ready (IMDB · 90.02% Acc)")
+        st.success("Sentiment Model: Active (IMDB, 90.02% Accuracy)")
     except Exception as exc:
-        st.error(f"Sentiment Model: Error ({exc})")
+        st.error(f"Sentiment Model: Offline ({exc})")
         sent_clf = None
 
     try:
         emo_clf = get_emotion_model()
-        st.success("Emotion Model: Ready (GoEmotions · 73.44% Acc)")
+        st.success("Emotion Model: Active (GoEmotions, 73.44% Accuracy)")
     except Exception as exc:
-        st.error(f"Emotion Model: Error ({exc})")
+        st.error(f"Emotion Model: Offline ({exc})")
         emo_clf = None
 
     st.divider()
-    st.subheader("XAI Explainability Settings")
-    include_emotion = st.checkbox("Include Emotion Model", value=True)
+    st.markdown("#### Explainability Configuration")
+    include_emotion = st.checkbox("Include Emotion Classification", value=True)
     show_attention = st.checkbox("Additive Attention Heatmap", value=True)
     show_lime = st.checkbox("LIME Local Perturbations", value=True)
-    show_shap = st.checkbox("SHAP Shapley Values (Slower)", value=False)
+    show_shap = st.checkbox("Kernel SHAP Attribution", value=False)
 
     lime_samples = st.slider(
-        "LIME Perturbation Samples",
+        "LIME Sample Count",
         min_value=100,
         max_value=1000,
         value=300,
         step=50,
-        help="Higher samples yield more stable local word importance but take slightly longer.",
+        help="Higher sample counts produce more stable perturbation weights with moderate compute time.",
     )
 
     if show_shap:
         shap_samples = st.slider(
-            "Kernel SHAP Samples",
+            "Kernel SHAP Evaluation Budget",
             min_value=40,
             max_value=200,
             value=80,
             step=20,
-            help="Kernel SHAP evaluates combinations against masked baseline; bounded for interactive responsiveness.",
+            help="Evaluates feature combinations against an all-words-masked baseline.",
         )
     else:
         shap_samples = 80
 
     st.divider()
-    st.markdown(
-        """
-        **Sharable Link Note**:
-        This dashboard runs seamlessly on **Streamlit Community Cloud** with 1-click GitHub deployment, persistent URLs, and zero cold-start sleeps.
-        """
+    st.markdown("#### Deployment Information")
+    st.caption(
+        "Standard deployment target: Streamlit Community Cloud (Python 3.11, CPU execution, persistent container)."
     )
 
 
-# Main Tabs Navigation
+# Tabs Navigation
 tab_predict, tab_batch, tab_analytics, tab_architecture, tab_deploy = st.tabs([
-    "🔍 Real-time Analysis & XAI",
-    "📁 Batch CSV Processing",
-    "📊 Model Analytics & Curves",
-    "🧠 Architecture & Theory",
-    "🚀 Sharable Link & Deployment",
+    "Inference and Interpretability",
+    "Batch CSV Processing",
+    "Evaluation and Analytics",
+    "Architecture and Methodology",
+    "Deployment Documentation",
 ])
 
 
@@ -254,52 +237,54 @@ tab_predict, tab_batch, tab_analytics, tab_architecture, tab_deploy = st.tabs([
 # TAB 1: SINGLE TEXT INFERENCE & XAI
 # ==========================================
 with tab_predict:
-    st.subheader("Interactive Sentiment & Emotion Assessment")
-    st.markdown("Analyze any sentence or review to inspect predictions and model evidence simultaneously.")
+    st.markdown("### Text Classification & Interpretability")
+    st.markdown(
+        "Submit input text to generate sentiment and emotion predictions alongside intrinsic attention weights and local post-hoc explanations."
+    )
 
-    # Sample Presets
     sample_presets = {
         "Custom Input": "",
-        "Mixed Contrast": "The camera is excellent but the battery is terrible.",
-        "High Joy & Praise": "I am absolutely thrilled and amazed by this wonderful experience! Highly recommended.",
-        "Severe Disappointment": "The flight was delayed for 8 hours and customer support was completely rude and dismissive.",
-        "Fear & Anxiety": "I was completely terrified when the car engine started making alarming loud noises on the highway.",
-        "Surprise": "Wait, did they really announce the brand new release date today?!",
+        "Contrastive Sentence": "The camera is excellent but the battery is terrible.",
+        "Positive Evaluation": "I am thoroughly impressed by the overall build quality and system performance.",
+        "Service Complaint": "The delivery was delayed by several days and support provided no resolution.",
+        "Safety Alert": "The device overheated suddenly and produced an alarming noise during operation.",
+        "Unexpected Finding": "The experimental results were surprisingly different from the published baseline figures.",
     }
 
     selected_sample = st.selectbox(
-        "Choose an example preset or write your own text:",
+        "Benchmark Examples:",
         options=list(sample_presets.keys()),
         index=1,
     )
 
-    default_text = sample_presets[selected_sample] if selected_sample != "Custom Input" else "The camera is excellent but the battery is terrible."
-    user_text = st.text_area(
-        "Enter text to analyze:",
-        value=default_text,
-        height=100,
-        placeholder="Type or paste a product review, feedback comment, or social post...",
+    default_text = (
+        sample_presets[selected_sample]
+        if selected_sample != "Custom Input"
+        else "The camera is excellent but the battery is terrible."
     )
 
-    col_btn1, col_btn2 = st.columns([1, 5])
-    with col_btn1:
-        analyze_clicked = st.button("🚀 Analyze Text", type="primary", use_container_width=True)
+    user_text = st.text_area(
+        "Input Text:",
+        value=default_text,
+        height=100,
+        placeholder="Enter English text for inference...",
+    )
+
+    col_btn, _ = st.columns([1, 4])
+    with col_btn:
+        analyze_clicked = st.button("Run Inference", type="primary", use_container_width=True)
 
     if analyze_clicked or user_text:
         if not user_text.strip():
-            st.warning("Please enter some text to analyze.")
+            st.warning("Input text cannot be empty.")
         elif not sent_clf:
-            st.error("Sentiment model could not be loaded. Please check checkpoint files.")
+            st.error("Sentiment model checkpoint is unavailable.")
         else:
-            with st.spinner("Running BiLSTM inference and calculating explainability..."):
+            with st.spinner("Executing neural inference and generating feature attributions..."):
                 try:
-                    # Run Sentiment Prediction
                     sent_pred = sent_clf.predict(user_text)
-
-                    # Run Emotion Prediction if enabled
                     emo_pred = emo_clf.predict(user_text) if (include_emotion and emo_clf) else None
 
-                    # Predictions Display Columns
                     col_sent, col_emo = st.columns(2)
 
                     with col_sent:
@@ -312,17 +297,16 @@ with tab_predict:
                             f"""
                             <div class="pred-card {card_class}">
                                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                                    <span style="color:#94a3b8; font-weight:700; font-size:0.85rem; letter-spacing:0.05em;">SENTIMENT PREDICTION</span>
-                                    <span style="background:{badge_color}; color:white; padding:3px 12px; border-radius:9999px; font-weight:700; font-size:0.85rem;">{sent_label}</span>
+                                    <span style="color:#94a3b8; font-weight:600; font-size:0.8rem; letter-spacing:0.05em;">SENTIMENT CLASSIFICATION</span>
+                                    <span style="background:{badge_color}; color:white; padding:2px 10px; border-radius:4px; font-weight:600; font-size:0.8rem;">{sent_label}</span>
                                 </div>
-                                <h2 style="margin:10px 0 4px 0; font-size:2rem; font-weight:800;">{sent_label}</h2>
-                                <p style="margin:0; color:#cbd5e1;">Model Confidence: <strong style="color:white;">{sent_conf*100:.2f}%</strong></p>
+                                <h3 style="margin:10px 0 4px 0; font-size:1.6rem; font-weight:700; color:#f8fafc;">{sent_label}</h3>
+                                <p style="margin:0; color:#94a3b8; font-size:0.92rem;">Confidence: <strong style="color:#f8fafc;">{sent_conf*100:.2f}%</strong></p>
                             </div>
                             """,
                             unsafe_allow_html=True,
                         )
 
-                        # Probability Distribution
                         st.markdown("##### Sentiment Class Probabilities")
                         sent_probs = sent_pred["probabilities"]
                         probs_df = pd.DataFrame({
@@ -332,25 +316,22 @@ with tab_predict:
                         })
                         chart_sent = (
                             alt.Chart(probs_df)
-                            .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
+                            .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3)
                             .encode(
                                 x=alt.X("Probability:Q", scale=alt.Scale(domain=[0, 1]), title="Probability"),
                                 y=alt.Y("Class:N", sort="-x", title=""),
                                 color=alt.Color(
                                     "Class:N",
-                                    scale=alt.Scale(
-                                        domain=["Positive", "Negative"],
-                                        range=["#10b981", "#ef4444"],
-                                    ),
+                                    scale=alt.Scale(domain=["Positive", "Negative"], range=["#10b981", "#ef4444"]),
                                     legend=None,
                                 ),
                                 tooltip=["Class", "Percentage"],
                             )
-                            .properties(height=110)
+                            .properties(height=100)
                         )
                         st.altair_chart(chart_sent, use_container_width=True)
                         st.markdown(
-                            "<p class='info-note'>* Binary sentiment trained on IMDB (genuine classes: positive, negative). Neutral is intentionally marked not trained.</p>",
+                            "<p class='info-note'>* Trained on IMDB (binary labels: positive, negative). Neutral is not part of the training vocabulary.</p>",
                             unsafe_allow_html=True,
                         )
 
@@ -362,18 +343,17 @@ with tab_predict:
                                 f"""
                                 <div class="pred-card pred-emotion">
                                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <span style="color:#94a3b8; font-weight:700; font-size:0.85rem; letter-spacing:0.05em;">EMOTION PREDICTION</span>
-                                        <span style="background:#8b5cf6; color:white; padding:3px 12px; border-radius:9999px; font-weight:700; font-size:0.85rem;">{emo_label}</span>
+                                        <span style="color:#94a3b8; font-weight:600; font-size:0.8rem; letter-spacing:0.05em;">EMOTION CLASSIFICATION</span>
+                                        <span style="background:#6366f1; color:white; padding:2px 10px; border-radius:4px; font-weight:600; font-size:0.8rem;">{emo_label}</span>
                                     </div>
-                                    <h2 style="margin:10px 0 4px 0; font-size:2rem; font-weight:800;">{emo_label}</h2>
-                                    <p style="margin:0; color:#cbd5e1;">Model Confidence: <strong style="color:white;">{emo_conf*100:.2f}%</strong></p>
+                                    <h3 style="margin:10px 0 4px 0; font-size:1.6rem; font-weight:700; color:#f8fafc;">{emo_label}</h3>
+                                    <p style="margin:0; color:#94a3b8; font-size:0.92rem;">Confidence: <strong style="color:#f8fafc;">{emo_conf*100:.2f}%</strong></p>
                                 </div>
                                 """,
                                 unsafe_allow_html=True,
                             )
 
-                            # Emotion Probability Distribution
-                            st.markdown("##### Emotion Class Probabilities (7 Classes)")
+                            st.markdown("##### Emotion Class Probabilities")
                             emo_probs = emo_pred["probabilities"]
                             emo_df = pd.DataFrame({
                                 "Emotion": [c.capitalize() for c in emo_probs.keys()],
@@ -382,7 +362,7 @@ with tab_predict:
                             })
                             chart_emo = (
                                 alt.Chart(emo_df)
-                                .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
+                                .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3)
                                 .encode(
                                     x=alt.X("Probability:Q", scale=alt.Scale(domain=[0, 1]), title="Probability"),
                                     y=alt.Y("Emotion:N", sort="-x", title=""),
@@ -393,37 +373,33 @@ with tab_predict:
                                     ),
                                     tooltip=["Emotion", "Percentage"],
                                 )
-                                .properties(height=220)
+                                .properties(height=210)
                             )
                             st.altair_chart(chart_emo, use_container_width=True)
                             st.markdown(
-                                "<p class='info-note'>* Filtered GoEmotions labels: anger, disappointment, fear, joy, love, sadness, surprise.</p>",
+                                "<p class='info-note'>* Filtered GoEmotions classes: anger, disappointment, fear, joy, love, sadness, surprise.</p>",
                                 unsafe_allow_html=True,
                             )
 
-                    # -------------------------------------------------------------
-                    # EXPLAINABLE AI (XAI) SECTION
-                    # -------------------------------------------------------------
+                    # Explainability Section
                     st.divider()
-                    st.subheader("💡 Explainable AI (XAI) Interpretability")
+                    st.markdown("### Explainable AI (XAI) Attributions")
                     st.markdown(
-                        "Inspect how the BiLSTM attention weights, LIME surrogate linear model, and Kernel SHAP attribution highlight word importance."
+                        "Comparative analysis of model-internal attention weights and local post-hoc interpretability techniques."
                     )
 
-                    # 1. BiLSTM Additive Attention
+                    # 1. Additive Attention
                     if show_attention:
-                        st.markdown("#### 1. BiLSTM Additive Attention Mechanism")
+                        st.markdown("#### 1. BiLSTM Additive Attention Layer")
                         attn_tokens = sent_pred.get("attention_tokens", [])
                         if attn_tokens:
                             max_weight = max((item["weight"] for item in attn_tokens), default=0.001)
 
-                            # HTML chips rendering with intensity
                             chips_html = []
                             for item in attn_tokens:
                                 w = item["weight"]
                                 norm_w = w / (max_weight + 1e-6)
-                                # Alpha background intensity
-                                bg_alpha = max(0.12, min(0.95, norm_w * 0.95))
+                                bg_alpha = max(0.12, min(0.92, norm_w * 0.92))
                                 text_color = "#ffffff" if norm_w > 0.4 else "#cbd5e1"
                                 chip = (
                                     f'<span class="attn-chip" style="background: rgba(99, 102, 241, {bg_alpha:.2f}); '
@@ -441,70 +417,77 @@ with tab_predict:
                                 unsafe_allow_html=True,
                             )
                             st.caption(
-                                "Hover or inspect token chips above. Background intensity indicates the normalized attention weight (softmax scores over BiLSTM hidden states)."
+                                "Token background intensity represents normalized softmax attention weights allocated during sequence context pooling."
                             )
 
-                            # Top attention ranked chart
                             col_attn_chart, col_attn_table = st.columns([3, 2])
                             with col_attn_chart:
                                 top_attn_df = pd.DataFrame(attn_tokens).sort_values("weight", ascending=False).head(10)
                                 attn_bar = (
                                     alt.Chart(top_attn_df)
-                                    .mark_bar(cornerRadiusTopRight=5, cornerRadiusBottomRight=5, color="#6366f1")
+                                    .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3, color="#6366f1")
                                     .encode(
                                         x=alt.X("weight:Q", title="Attention Weight (Softmax)"),
                                         y=alt.Y("token:N", sort="-x", title="Token"),
                                         tooltip=["token", "weight"],
                                     )
-                                    .properties(height=260, title="Top 10 Focused Tokens (Attention Layer)")
+                                    .properties(height=260, title="Top Token Attention Weights")
                                 )
                                 st.altair_chart(attn_bar, use_container_width=True)
 
                             with col_attn_table:
-                                st.markdown("###### Attention Tokens Ranking")
+                                st.markdown("###### Ranked Token Weights")
                                 st.dataframe(
-                                    top_attn_df.rename(columns={"token": "Word", "weight": "Attention Score"}),
+                                    top_attn_df.rename(columns={"token": "Token", "weight": "Weight"}),
                                     use_container_width=True,
                                     hide_index=True,
                                 )
 
-                    # 2. LIME Explanations
+                    # 2. LIME
                     if show_lime:
                         st.markdown("#### 2. LIME (Local Interpretable Model-agnostic Explanations)")
-                        with st.spinner("Computing LIME word perturbation contributions..."):
+                        with st.spinner("Computing local surrogate perturbations..."):
                             lime_res = lime_explanation(sent_clf, user_text, num_features=10, num_samples=lime_samples)
                             lime_words = lime_res.get("important_words", [])
 
                             if lime_words:
                                 lime_df = pd.DataFrame(lime_words)
-                                lime_df["direction"] = np.where(lime_df["contribution"] >= 0, "Supports Class", "Opposes Class")
-                                lime_df["color"] = np.where(lime_df["contribution"] >= 0, "#10b981", "#ef4444")
+                                lime_df["direction"] = np.where(
+                                    lime_df["contribution"] >= 0, "Supports Prediction", "Opposes Prediction"
+                                )
                                 lime_df["abs_contrib"] = lime_df["contribution"].abs()
 
                                 col_l1, col_l2 = st.columns([3, 2])
                                 with col_l1:
                                     lime_chart = (
                                         alt.Chart(lime_df)
-                                        .mark_bar(cornerRadius=4)
+                                        .mark_bar(cornerRadius=3)
                                         .encode(
-                                            x=alt.X("contribution:Q", title="Local Feature Weight (LIME)"),
-                                            y=alt.Y("token:N", sort=alt.EncodingSortField(field="abs_contrib", order="descending"), title="Token"),
+                                            x=alt.X("contribution:Q", title="Local Regression Weight"),
+                                            y=alt.Y(
+                                                "token:N",
+                                                sort=alt.EncodingSortField(field="abs_contrib", order="descending"),
+                                                title="Token",
+                                            ),
                                             color=alt.Color(
                                                 "direction:N",
                                                 scale=alt.Scale(
-                                                    domain=["Supports Class", "Opposes Class"],
+                                                    domain=["Supports Prediction", "Opposes Prediction"],
                                                     range=["#10b981", "#ef4444"],
                                                 ),
-                                                legend=alt.Legend(title="Local Impact"),
+                                                legend=alt.Legend(title="Effect"),
                                             ),
                                             tooltip=["token", "contribution", "direction"],
                                         )
-                                        .properties(height=280, title=f"LIME Word Contributions toward '{sent_pred['label'].upper()}'")
+                                        .properties(
+                                            height=270,
+                                            title=f"LIME Word Weights toward '{sent_pred['label'].upper()}'",
+                                        )
                                     )
                                     st.altair_chart(lime_chart, use_container_width=True)
 
                                 with col_l2:
-                                    st.markdown(f"###### LIME Feature Scores ({lime_samples} samples)")
+                                    st.markdown(f"###### Feature Weights ({lime_samples} samples)")
                                     st.dataframe(
                                         lime_df[["token", "contribution", "direction"]].rename(
                                             columns={"token": "Token", "contribution": "Weight", "direction": "Effect"}
@@ -514,65 +497,74 @@ with tab_predict:
                                     )
                                 st.caption(lime_res.get("note", ""))
 
-                    # 3. SHAP Explanations
+                    # 3. Kernel SHAP
                     if show_shap:
                         st.markdown("#### 3. Kernel SHAP (SHapley Additive exPlanations)")
-                        with st.spinner("Computing Kernel SHAP values against word-masked baseline..."):
+                        with st.spinner("Computing Shapley values against masked baseline..."):
                             try:
                                 shap_res = shap_explanation(sent_clf, user_text, max_tokens=16, nsamples=shap_samples)
                                 shap_words = shap_res.get("important_words", [])
 
                                 if shap_words:
                                     shap_df = pd.DataFrame(shap_words).head(10)
-                                    shap_df["direction"] = np.where(shap_df["contribution"] >= 0, "Positive Impact", "Negative Impact")
+                                    shap_df["direction"] = np.where(
+                                        shap_df["contribution"] >= 0, "Positive Impact", "Negative Impact"
+                                    )
                                     shap_df["abs_contrib"] = shap_df["contribution"].abs()
 
                                     col_s1, col_s2 = st.columns([3, 2])
                                     with col_s1:
                                         shap_chart = (
                                             alt.Chart(shap_df)
-                                            .mark_bar(cornerRadius=4)
+                                            .mark_bar(cornerRadius=3)
                                             .encode(
-                                                x=alt.X("contribution:Q", title="Shapley Value (SHAP)"),
-                                                y=alt.Y("token:N", sort=alt.EncodingSortField(field="abs_contrib", order="descending"), title="Token"),
+                                                x=alt.X("contribution:Q", title="Shapley Value"),
+                                                y=alt.Y(
+                                                    "token:N",
+                                                    sort=alt.EncodingSortField(field="abs_contrib", order="descending"),
+                                                    title="Token",
+                                                ),
                                                 color=alt.Color(
                                                     "direction:N",
                                                     scale=alt.Scale(
                                                         domain=["Positive Impact", "Negative Impact"],
                                                         range=["#38bdf8", "#f43f5e"],
                                                     ),
-                                                    legend=alt.Legend(title="Impact"),
+                                                    legend=alt.Legend(title="Attribution"),
                                                 ),
                                                 tooltip=["token", "contribution", "direction"],
                                             )
-                                            .properties(height=280, title=f"Kernel SHAP Impact on '{sent_pred['label'].upper()}'")
+                                            .properties(
+                                                height=270,
+                                                title=f"Kernel SHAP Attribution toward '{sent_pred['label'].upper()}'",
+                                            )
                                         )
                                         st.altair_chart(shap_chart, use_container_width=True)
 
                                     with col_s2:
-                                        st.markdown(f"###### SHAP Attribution ({shap_samples} evaluations)")
+                                        st.markdown(f"###### Shapley Values ({shap_samples} evaluations)")
                                         st.dataframe(
                                             shap_df[["token", "contribution", "direction"]].rename(
-                                                columns={"token": "Token", "contribution": "Shapley Value", "direction": "Effect"}
+                                                columns={"token": "Token", "contribution": "Value", "direction": "Impact"}
                                             ),
                                             use_container_width=True,
                                             hide_index=True,
                                         )
                                     st.caption(shap_res.get("note", ""))
                             except Exception as shap_err:
-                                st.warning(f"Could not compute SHAP explanation: {shap_err}")
+                                st.warning(f"Kernel SHAP computation failed: {shap_err}")
 
                 except Exception as err:
-                    st.error(f"Prediction failed: {err}")
+                    st.error(f"Inference execution failed: {err}")
 
 
 # ==========================================
 # TAB 2: BATCH CSV PROCESSING
 # ==========================================
 with tab_batch:
-    st.subheader("📁 Batch CSV Analysis")
+    st.markdown("### Batch Review Classification")
     st.markdown(
-        "Upload a `.csv` file containing a **`review`** column to classify multiple reviews with both Sentiment and Emotion models simultaneously."
+        "Upload a structured CSV containing a **`review`** column to execute batch inference across both sentiment and emotion networks."
     )
 
     sample_csv_path = ROOT / "sample_batch_reviews.csv"
@@ -581,44 +573,44 @@ with tab_batch:
 
     col_upload, col_sample = st.columns([3, 2])
     with col_sample:
-        st.markdown("###### Need sample data?")
+        st.markdown("###### Reference Dataset")
         if sample_csv_path.exists():
             sample_data = sample_csv_path.read_text(encoding="utf-8")
             st.download_button(
-                label="📥 Download Sample Batch CSV",
+                label="Download Sample CSV",
                 data=sample_data,
                 file_name="sample_batch_reviews.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
-            load_sample_btn = st.button("📄 Load Sample CSV Automatically", use_container_width=True)
+            load_sample_btn = st.button("Load Sample CSV", use_container_width=True)
         else:
             load_sample_btn = False
 
     with col_upload:
-        uploaded_file = st.file_uploader("Upload CSV File (Max 5,000 reviews):", type=["csv"])
+        uploaded_file = st.file_uploader("Upload CSV (maximum 5,000 rows):", type=["csv"])
 
     input_df = None
     if uploaded_file is not None:
         try:
             input_df = pd.read_csv(uploaded_file)
         except Exception as e:
-            st.error(f"Error reading CSV: {e}")
+            st.error(f"Error parsing CSV file: {e}")
     elif load_sample_btn and sample_csv_path.exists():
         input_df = pd.read_csv(sample_csv_path)
-        st.info("Loaded sample batch reviews dataset.")
+        st.info("Loaded reference benchmark dataset.")
 
     if input_df is not None:
         if "review" not in input_df.columns:
-            st.error("The uploaded CSV must contain a column named **'review'**.")
+            st.error("Input CSV must contain a header named 'review'.")
         elif input_df.empty:
-            st.warning("The uploaded CSV has no rows.")
+            st.warning("Input CSV contains no rows.")
         else:
-            st.write(f"Loaded **{len(input_df)}** reviews.")
-            with st.expander("Preview Uploaded CSV", expanded=False):
+            st.write(f"Total rows identified: **{len(input_df)}**")
+            with st.expander("Preview Input Records", expanded=False):
                 st.dataframe(input_df.head(10), use_container_width=True)
 
-            if st.button("⚡ Run Batch Classification", type="primary"):
+            if st.button("Execute Batch Inference", type="primary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
 
@@ -626,18 +618,22 @@ with tab_batch:
                 valid_reviews = [r for r in clean_reviews if r]
 
                 if not valid_reviews:
-                    st.error("All review rows appear to be empty.")
+                    st.error("All rows in the review column are empty.")
                 else:
-                    status_text.text("Running Sentiment BiLSTM Batch Inference...")
-                    progress_bar.progress(20)
+                    status_text.text("Processing Sentiment BiLSTM batches...")
+                    progress_bar.progress(25)
                     sent_results = sent_clf.predict_many(valid_reviews, batch_size=128)
 
-                    status_text.text("Running Emotion BiLSTM Batch Inference...")
-                    progress_bar.progress(60)
-                    emo_results = emo_clf.predict_many(valid_reviews, batch_size=128) if emo_clf else [{"label": "N/A", "confidence": 0.0}] * len(valid_reviews)
+                    status_text.text("Processing Emotion BiLSTM batches...")
+                    progress_bar.progress(65)
+                    emo_results = (
+                        emo_clf.predict_many(valid_reviews, batch_size=128)
+                        if emo_clf
+                        else [{"label": "N/A", "confidence": 0.0}] * len(valid_reviews)
+                    )
 
                     progress_bar.progress(90)
-                    status_text.text("Compiling results and summary analytics...")
+                    status_text.text("Compiling summary distributions...")
 
                     results_df = pd.DataFrame({
                         "review": valid_reviews,
@@ -648,23 +644,23 @@ with tab_batch:
                     })
 
                     progress_bar.progress(100)
-                    status_text.success("Batch classification complete!")
+                    status_text.success("Batch classification completed.")
 
                     # Summary Metrics
                     st.divider()
-                    st.subheader("Batch Summary Metrics")
+                    st.markdown("#### Aggregate Metrics")
                     m1, m2, m3, m4 = st.columns(4)
                     tot = len(results_df)
-                    pos_count = (results_df["sentiment"] == "positive").sum()
-                    neg_count = (results_df["sentiment"] == "negative").sum()
+                    pos_count = int((results_df["sentiment"] == "positive").sum())
+                    neg_count = int((results_df["sentiment"] == "negative").sum())
                     top_emotion = results_df["emotion"].mode()[0] if not results_df["emotion"].empty else "N/A"
 
-                    m1.metric("Total Reviews", tot)
+                    m1.metric("Total Records", tot)
                     m2.metric("Positive Sentiment", f"{pos_count} ({pos_count/tot*100:.1f}%)")
                     m3.metric("Negative Sentiment", f"{neg_count} ({neg_count/tot*100:.1f}%)")
-                    m4.metric("Top Emotion", top_emotion.capitalize())
+                    m4.metric("Predominant Emotion", top_emotion.capitalize())
 
-                    # Charts
+                    # Distributions
                     col_c1, col_c2 = st.columns(2)
                     with col_c1:
                         st.markdown("###### Sentiment Distribution")
@@ -672,9 +668,9 @@ with tab_batch:
                         sent_counts.columns = ["Sentiment", "Count"]
                         chart_s = (
                             alt.Chart(sent_counts)
-                            .mark_bar(cornerRadius=6)
+                            .mark_bar(cornerRadius=3)
                             .encode(
-                                x=alt.X("Count:Q", title="Reviews"),
+                                x=alt.X("Count:Q", title="Count"),
                                 y=alt.Y("Sentiment:N", sort="-x", title=""),
                                 color=alt.Color(
                                     "Sentiment:N",
@@ -693,25 +689,24 @@ with tab_batch:
                         emo_counts.columns = ["Emotion", "Count"]
                         chart_e = (
                             alt.Chart(emo_counts)
-                            .mark_bar(cornerRadius=6)
+                            .mark_bar(cornerRadius=3)
                             .encode(
-                                x=alt.X("Count:Q", title="Reviews"),
+                                x=alt.X("Count:Q", title="Count"),
                                 y=alt.Y("Emotion:N", sort="-x", title=""),
                                 color=alt.Color("Count:Q", scale=alt.Scale(scheme="purples"), legend=None),
                                 tooltip=["Emotion", "Count"],
                             )
-                            .properties(height=220)
+                            .properties(height=210)
                         )
                         st.altair_chart(chart_e, use_container_width=True)
 
-                    # Table preview and download
                     st.divider()
-                    st.subheader("Processed Reviews Preview")
+                    st.markdown("#### Output Table")
                     st.dataframe(results_df, use_container_width=True)
 
                     csv_data = results_df.to_csv(index=False).encode("utf-8")
                     st.download_button(
-                        label="📥 Download Processed CSV Results",
+                        label="Download Processed Results (CSV)",
                         data=csv_data,
                         file_name="sentixai_batch_results.csv",
                         mime="text/csv",
@@ -723,31 +718,31 @@ with tab_batch:
 # TAB 3: MODEL ANALYTICS & CURVES
 # ==========================================
 with tab_analytics:
-    st.subheader("📊 Training & Evaluation Analytics")
-    st.markdown("Metrics, curves, and confusion matrices saved from genuine held-out test evaluations.")
+    st.markdown("### Model Training and Evaluation Metrics")
+    st.markdown(
+        "Quantitative benchmarks, convergence curves, and confusion matrices evaluated on independent held-out test splits."
+    )
 
     eval_data = load_evaluation_data()
     sent_eval = eval_data.get("sentiment")
     emo_eval = eval_data.get("emotion")
 
-    # High-level comparison KPIs
     st.markdown("##### Held-out Test Set Performance")
     kpi_cols = st.columns(4)
     if sent_eval:
         s_acc = sent_eval["test_metrics"]["accuracy"] * 100
         s_f1 = sent_eval["test_metrics"]["f1_weighted"] * 100
-        kpi_cols[0].metric("Sentiment Accuracy", f"{s_acc:.2f}%", help="IMDB 4,959 held-out test reviews")
+        kpi_cols[0].metric("Sentiment Accuracy", f"{s_acc:.2f}%", help="Evaluated on 4,959 test reviews")
         kpi_cols[1].metric("Sentiment Weighted F1", f"{s_f1:.2f}%")
     if emo_eval:
         e_acc = emo_eval["test_metrics"]["accuracy"] * 100
         e_f1 = emo_eval["test_metrics"]["f1_weighted"] * 100
-        kpi_cols[2].metric("Emotion Accuracy", f"{e_acc:.2f}%", help="GoEmotions 738 held-out test examples")
+        kpi_cols[2].metric("Emotion Accuracy", f"{e_acc:.2f}%", help="Evaluated on 738 test samples")
         kpi_cols[3].metric("Emotion Weighted F1", f"{e_f1:.2f}%")
 
     st.divider()
 
-    # Training Curves
-    st.subheader("Training vs Validation Curves")
+    st.markdown("#### Convergence History")
     col_hist1, col_hist2 = st.columns(2)
 
     if sent_eval and "history" in sent_eval:
@@ -761,14 +756,17 @@ with tab_analytics:
         })
 
         with col_hist1:
-            st.markdown("###### Sentiment: Accuracy across Epochs")
+            st.markdown("###### Sentiment: Accuracy per Epoch")
             c_acc = (
                 alt.Chart(sent_curve_df)
                 .mark_line(point=True)
                 .encode(
                     x=alt.X("Epoch:O", title="Epoch"),
                     y=alt.Y("Accuracy:Q", scale=alt.Scale(domain=[0.7, 1.0]), title="Accuracy"),
-                    color=alt.Color("Split:N", scale=alt.Scale(domain=["Train", "Validation"], range=["#3b82f6", "#f97316"])),
+                    color=alt.Color(
+                        "Split:N",
+                        scale=alt.Scale(domain=["Train", "Validation"], range=["#3b82f6", "#f97316"]),
+                    ),
                     tooltip=["Epoch", "Split", "Accuracy"],
                 )
                 .properties(height=240)
@@ -776,23 +774,25 @@ with tab_analytics:
             st.altair_chart(c_acc, use_container_width=True)
 
         with col_hist2:
-            st.markdown("###### Sentiment: Loss across Epochs")
+            st.markdown("###### Sentiment: Cross-Entropy Loss per Epoch")
             c_loss = (
                 alt.Chart(sent_curve_df)
                 .mark_line(point=True)
                 .encode(
                     x=alt.X("Epoch:O", title="Epoch"),
-                    y=alt.Y("Loss:Q", title="Cross-Entropy Loss"),
-                    color=alt.Color("Split:N", scale=alt.Scale(domain=["Train", "Validation"], range=["#3b82f6", "#f97316"])),
+                    y=alt.Y("Loss:Q", title="Loss"),
+                    color=alt.Color(
+                        "Split:N",
+                        scale=alt.Scale(domain=["Train", "Validation"], range=["#3b82f6", "#f97316"]),
+                    ),
                     tooltip=["Epoch", "Split", "Loss"],
                 )
                 .properties(height=240)
             )
             st.altair_chart(c_loss, use_container_width=True)
 
-    # Confusion Matrices
     st.divider()
-    st.subheader("Confusion Matrices")
+    st.markdown("#### Test Set Confusion Matrices")
     col_cm1, col_cm2 = st.columns(2)
 
     sent_cm_path = ROOT / "outputs/results/confusion_matrix.png"
@@ -802,27 +802,26 @@ with tab_analytics:
     emo_cm_path = ROOT / "outputs/emotion/results/confusion_matrix.png"
 
     with col_cm1:
-        st.markdown("###### Sentiment Confusion Matrix (IMDB)")
+        st.markdown("###### Sentiment Network (IMDB Test Set)")
         if sent_cm_path.exists():
-            st.image(str(sent_cm_path), caption="Sentiment BiLSTM + Attention Confusion Matrix", use_container_width=True)
+            st.image(str(sent_cm_path), caption="Normalized Confusion Matrix (Binary Sentiment)", use_container_width=True)
         else:
-            st.info("Sentiment confusion matrix image not found.")
+            st.info("Sentiment confusion matrix graphic is not available.")
 
     with col_cm2:
-        st.markdown("###### Emotion Confusion Matrix (GoEmotions)")
+        st.markdown("###### Emotion Network (GoEmotions Test Set)")
         if emo_cm_path.exists():
-            st.image(str(emo_cm_path), caption="Emotion BiLSTM + Attention Confusion Matrix", use_container_width=True)
+            st.image(str(emo_cm_path), caption="Normalized Confusion Matrix (7-Class Emotion)", use_container_width=True)
         else:
-            st.info("Emotion confusion matrix image not found.")
+            st.info("Emotion confusion matrix graphic is not available.")
 
-    # Classification Reports
     st.divider()
-    st.subheader("Detailed Classification Reports")
+    st.markdown("#### Detailed Classification Reports")
     col_cr1, col_cr2 = st.columns(2)
 
     with col_cr1:
         if sent_eval and "classification_report" in sent_eval:
-            st.markdown("###### Sentiment Model (Test Split)")
+            st.markdown("###### Sentiment Model Metrics")
             report = sent_eval["classification_report"]
             rows = []
             for cls in ["negative", "positive", "macro avg", "weighted avg"]:
@@ -839,7 +838,7 @@ with tab_analytics:
 
     with col_cr2:
         if emo_eval and "classification_report" in emo_eval:
-            st.markdown("###### Emotion Model (Test Split)")
+            st.markdown("###### Emotion Model Metrics")
             report = emo_eval["classification_report"]
             rows = []
             for cls in emo_eval["class_names"] + ["macro avg", "weighted avg"]:
@@ -859,103 +858,102 @@ with tab_analytics:
 # TAB 4: ARCHITECTURE & THEORY
 # ==========================================
 with tab_architecture:
-    st.subheader("🧠 Model Architecture & Deep Learning Foundations")
+    st.markdown("### Model Architecture and Theory")
 
     st.markdown(
         """
-        ### Neural Network Pipeline
-        SentixAI implements a custom **Bidirectional Long Short-Term Memory (BiLSTM)** network enhanced with an **Additive Attention Mechanism**.
+        #### Network Pipeline
+        The classification pipeline couples a bidirectional recurrent structure with a parameterised additive attention layer to pool variable-length token representations into fixed-dimensional context vectors.
         """
     )
 
     st.code(
         """
-[Input Tokens]
-      ↓
-[Embedding Layer]        (Vocab Size → 128-dim vectors + Dropout 0.35)
-      ↓
-[Bidirectional LSTM]     (Forward LSTM + Backward LSTM → 256-dim concatenated states)
-      ↓
-[Additive Attention]     (Masked Bahdanau Attention → Normalized Token Weights α_t)
-      ↓
-[Context Pooling]        (Context Vector c = Σ α_t · h_t)
-      ↓
-[Dropout & Dense Layer]  (Linear Projection: 256 → Num Classes)
-      ↓
-[Softmax Normalization]  (Yields calibrated class probabilities during inference)
+Input Tokens (x_1, ..., x_T)
+        |
+Embedding Layer           (Vocabulary Dimension -> 128-d, Dropout = 0.35)
+        |
+Bidirectional LSTM        (Hidden Dimension = 128; Forward + Backward = 256-d states h_t)
+        |
+Masked Additive Attention (Computes alignment scores e_t and normalized weights alpha_t)
+        |
+Context Vector Pooling    (c = SUM(alpha_t * h_t))
+        |
+Linear Dense Projection   (256-d -> Number of Target Classes)
+        |
+Softmax Normalization     (Inference probability distribution)
         """,
         language="text",
     )
 
     st.markdown(
         """
-        ### Additive Attention Formulation
-        Unlike vanilla sequence pooling (which takes only the final hidden state $h_T$ or simple mean pooling), the additive attention module learns to allocate importance dynamically:
-
-        1. **Score Calculation**:
+        #### Mathematical Formulation
+        1. **Attention Energy Calculation**:
         $$e_t = v^T \\tanh(W h_t + b)$$
-        Where $h_t \\in \\mathbb{R}^{2d}$ is the concatenated BiLSTM hidden state at position $t$, $W \\in \\mathbb{R}^{a \\times 2d}$ is the projection weight, and $v \\in \\mathbb{R}^a$ is the attention vector.
+        Where $h_t \\in \\mathbb{R}^{2d}$ represents the bidirectional state at token index $t$, $W \\in \\mathbb{R}^{a \\times 2d}$ denotes the trainable projection matrix, and $v \\in \\mathbb{R}^a$ is the attention scoring vector.
 
-        2. **Padding Masking & Softmax Normalization**:
+        2. **Masked Softmax Normalization**:
         $$\\alpha_t = \\frac{\\exp(e_t)}{\\sum_{k=1}^T \\exp(e_k)}$$
-        Padding tokens ($\text{<PAD>}$) are masked with $-10^9$ prior to softmax so zero probability mass is allocated to padding.
+        Padding tokens ($\\text{<PAD>}$) are assigned a large negative mask ($-10^9$) prior to softmax to ensure zero attention mass is allocated to padding.
 
-        3. **Context Vector Generation**:
+        3. **Context Aggregation**:
         $$c = \\sum_{t=1}^T \\alpha_t h_t$$
 
-        ### Explainability Frameworks Comparison
-        | Method | Category | How it Works | Pros / Scope |
+        ---
+
+        #### Interpretability Methodologies Summary
+        | Framework | Paradigm | Mechanism | Interpretative Scope |
         | :--- | :--- | :--- | :--- |
-        | **Additive Attention** | Model-Intrinsic | Normalizes internal weights across BiLSTM hidden states $\\alpha_t$. | Zero inference overhead; exact internal representation. |
-        | **LIME** | Model-Agnostic Surrogate | Samples word-removal perturbations and fits a local ridge regressor. | Identifies both positive (supporting) and negative (opposing) words. |
-        | **Kernel SHAP** | Cooperative Game Theory | Computes Shapley values comparing token subsets against masked baselines. | Fair attribution with mathematical efficiency and consistency guarantees. |
+        | **Additive Attention** | Model-Intrinsic | Normalizes pooling weights directly inside network computation graph. | Token-level focus during context aggregation. |
+        | **LIME** | Model-Agnostic Surrogate | Fits an interpretable local ridge regressor on perturbed text samples. | Directional feature weights (supporting vs. opposing). |
+        | **Kernel SHAP** | Cooperative Game Theory | Computes Shapley values against a marginal masked background distribution. | Fair attribution satisfying efficiency and consistency axioms. |
         """
     )
 
 
 # ==========================================
-# TAB 5: SHARABLE LINK & DEPLOYMENT GUIDE
+# TAB 5: DEPLOYMENT DOCUMENTATION
 # ==========================================
 with tab_deploy:
-    st.subheader("🚀 How to Get a Permanent Sharable Link")
+    st.markdown("### Production Deployment Guide")
     st.markdown(
         """
-        ### Why Streamlit Community Cloud is Superior for Deep Learning
+        #### Hosting Comparison
 
-        | Feature | **Streamlit Community Cloud** (Recommended) | **Render Free Tier** | **Vercel Serverless** |
+        | Specification | **Streamlit Community Cloud** (Recommended) | **Render (Free Tier)** | **Vercel Serverless** |
         | :--- | :--- | :--- | :--- |
-        | **Cost** | 100% Free | Free Tier | Free Tier |
-        | **PyTorch Support** | ✅ Full Native PyTorch, Torch CPU, LIME, SHAP | ⚠️ Strict 512MB RAM (OOM crashes) | ❌ Exceeds 250MB Serverless bundle limit |
-        | **Cold Starts** | ✅ Always available, zero 50-second spin-downs | ❌ 50+ second freeze after inactivity | ❌ Lambda cold start & 10s-60s timeout |
-        | **Sharable Link** | `https://<your-username>-sentixai.streamlit.app` | `https://sentixai-xxxx.onrender.com` | `https://sentixai.vercel.app` (frontend only) |
-        | **Setup Time** | 2 minutes (1 click from GitHub) | Requires Docker build & memory tuning | Requires splitting frontend & backend |
+        | **Cost** | Free tier available | Free tier available | Free tier available |
+        | **PyTorch Execution** | Supported (Native PyTorch, Scikit-Learn, LIME, SHAP) | Limited (512 MB memory constraint prone to OOM) | Unsupported (Exceeds 250 MB bundle ceiling) |
+        | **Container Persistence** | Persistent container; no sleep timeout | Spins down after 15 minutes of inactivity | Function timeouts capped at 10–15 seconds |
+        | **Public URL** | `https://<organization>-sentixai.streamlit.app` | `https://sentixai.onrender.com` | `https://sentixai.vercel.app` (Static UI only) |
+        | **Deployment Workflow** | Automated GitHub integration (1-click) | Dockerfile compilation required | Requires decoupled API backend |
 
         ---
 
-        ### Step-by-Step: Deploy to Streamlit Cloud in 3 Steps
+        #### Deployment Steps for Streamlit Community Cloud
 
-        1. **Push your code to GitHub**:
+        1. **Commit and push changes to GitHub**:
         ```bash
         git add .
-        git commit -m "Add production Streamlit dashboard for Sentiment & Emotion XAI"
+        git commit -m "Configure production Streamlit dashboard"
         git push origin main
         ```
 
-        2. **Connect to Streamlit Community Cloud**:
-           - Visit [share.streamlit.io](https://share.streamlit.io) and log in with your GitHub account.
-           - Click **"Create app"** (or **"New app"**).
-           - Select repository: **`govindshaw67/SentixAI`**
-           - Select branch: **`main`**
-           - Select main file path: **`streamlit_app.py`**
+        2. **Deploy on Streamlit Cloud**:
+           - Log in to [share.streamlit.io](https://share.streamlit.io) using your GitHub account.
+           - Click **New app**.
+           - Select the repository: **`govindshaw67/SentixAI`**
+           - Set branch: **`main`**
+           - Set entrypoint file path: **`streamlit_app.py`**
+           - Specify custom app URL subdomain under **Advanced settings** if desired.
 
-        3. **Launch & Share**:
-           - Click **"Deploy!"**
-           - Streamlit Cloud will install `requirements.txt` and launch your live app with a public, sharable link:
-           - **`https://sentixai.streamlit.app`** (or your custom subdomain under App Settings)!
+        3. **Verification**:
+           - Streamlit Cloud will parse `requirements.txt`, load the committed checkpoints, and generate your live URL.
         """
     )
 
 st.divider()
 st.caption(
-    "SentixAI Analytics · B.Tech CSE-AIML Project Demonstration · Explainable BiLSTM Attention Neural Intelligence"
+    "SentixAI Platform · Explainable Deep Learning System for Sentiment and Emotion Classification"
 )
