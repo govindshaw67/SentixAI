@@ -157,11 +157,49 @@ python explain_sentixai.py --text "The camera is excellent but the battery is te
 
 ## Running the application
 
+### Option 1: Streamlit Dashboard (Recommended for Live Demo & Sharing)
+
+Run the interactive Explainable AI dashboard with token attention heatmaps, LIME, SHAP, batch CSV analysis, and model curves:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Open `http://localhost:8501` in your browser.
+
+### Option 2: FastAPI Backend & Classic Dashboard
+
 ```bash
 python -m uvicorn app:app --reload
 ```
 
-Open `http://127.0.0.1:8000` and keep the terminal running. For batch analysis, upload a CSV with a non-empty `review` column; `data/sample_batch_reviews.csv` is a valid example.
+Open `http://127.0.0.1:8000` in your browser.
+
+## Deployment & Sharable Link (Streamlit Cloud vs Render vs Vercel)
+
+### 1. Deploying to Streamlit Community Cloud (Recommended)
+
+Streamlit Community Cloud is 100% free, runs native PyTorch without memory/bundle limits, and provides a permanent public URL (e.g. `https://sentixai.streamlit.app`):
+
+1. Push your repository to GitHub:
+   ```bash
+   git add .
+   git commit -m "Add Streamlit Explainable AI dashboard"
+   git push origin main
+   ```
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+3. Click **"New App"** (or **"Create app"**).
+4. Select:
+   - **Repository:** `govindshaw67/SentixAI`
+   - **Branch:** `main`
+   - **Main file path:** `streamlit_app.py`
+5. Click **"Deploy!"** Your public sharable link will be live in 1-2 minutes!
+
+### 2. Why Not Vercel for PyTorch Deep Learning?
+
+- **Bundle Size Limit:** Vercel Serverless Functions enforce a strict **250MB uncompressed limit**. PyTorch, SciPy, Scikit-learn, LIME, and SHAP together exceed 1.2GB, causing serverless build failure.
+- **Execution Timeouts:** XAI computations like LIME and SHAP can take 5-15 seconds, hitting Vercel's strict 10s-15s serverless timeout caps.
+- **Vercel Static Hosting:** If desired, Vercel can host the static HTML/CSS/JS frontend (`vercel.json` is provided in the repository) while the models run on a dedicated Python service. However, Streamlit Cloud hosts the full model + UI seamlessly in one place at zero cost.
 
 ## Security and reproducibility
 

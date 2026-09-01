@@ -32,7 +32,7 @@ def lime_explanation(classifier: SavedTextClassifier, text: str, num_features: i
         "method": "lime",
         "predicted_class": prediction["label"],
         "important_words": [
-            {"token": token, "contribution": float(weight)}
+            {"token": str(token), "contribution": float(weight)}
             for token, weight in explanation.as_list(label=predicted_id)
         ],
         "note": "Positive values locally support the displayed class; negative values locally oppose it.",
