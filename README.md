@@ -1,224 +1,425 @@
 # SentixAI Analytics
 
-**Explainable Deep Learning for Sentiment and Emotion Analysis**
+**An Explainable Deep Learning Platform for Sentiment Classification, Emotion Detection, and Out-of-Distribution Review Anomaly Detection**
 
-**Live demo:** [https://sentixai-01cn.onrender.com](https://sentixai-01cn.onrender.com)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.3%2B-EE4C2C.svg)](https://pytorch.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.35%2B-FF4B4B.svg)](https://streamlit.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Abstract
+**Live Web Application:** [https://sentixai-01cn.onrender.com](https://sentixai-01cn.onrender.com)
 
-SentixAI is a local web application for English sentiment and emotion analysis. It uses independently trained BiLSTM-attention models, shows confidence and class probabilities, and offers attention, LIME, and SHAP explanations. It also supports batch CSV processing and a reproducible neural-model comparison study.
+---
 
-## Problem statement and objectives
+## 1. Abstract & Overview
 
-Text classifiers often return a label without explaining it. SentixAI predicts sentiment/emotion, surfaces model evidence, supports batch analysis, and preserves metrics/experiments for a B.Tech CSE-AIML demonstration.
+**SentixAI** is an end-to-end, explainable deep learning platform designed to classify, interpret, and audit textual data. Moving beyond opaque "black-box" classifiers, SentixAI couples state-of-the-art recurrent and convolutional neural architectures with multi-tiered Explainable AI (XAI) frameworks—including **Model-Intrinsic Additive Attention**, **LIME (Local Interpretable Model-agnostic Explanations)**, and **Kernel SHAP (SHapley Additive exPlanations)**.
 
-## Features
+The platform provides a dual-model sentiment analysis engine allowing direct architectural comparisons between **Bidirectional LSTM with Attention** and a high-throughput **1D Text Convolutional Neural Network (TextCNN)**, alongside an independent **7-class Emotion Classifier** and an unsupervised **Variational Autoencoder (VAE)** for anomaly and outlier review detection.
 
-- Saved-model inference: the dashboard never retrains a model.
-- Single-review and CSV batch analysis.
-- Confidence scores, real model probabilities, and downloadable batch results.
-- Attention, optional LIME, and optional SHAP explanations.
-- Training curves, real confusion matrices, and saved evaluation reports.
-- MLP, LSTM, BiLSTM, and BiLSTM-attention comparison runner.
+---
 
-## System architecture
+## 2. Key Features
 
-```text
-Browser dashboard / CSV upload
-        ↓
-FastAPI (app.py)
-        ↓
-Shared preprocessing + saved vocabulary
-        ↓
-Sentiment checkpoint ─→ label, probability, explanation
-Emotion checkpoint   ─→ label, probability, explanation
-        ↓
-Dashboard cards, charts, and downloadable CSV
-```
+- **Multi-Model Sentiment Engine**: Switch seamlessly between **BiLSTM + Additive Attention** (accuracy-optimized: **90.02%**) and **TextCNN** (latency-optimized: **86.73%**, **~7.6x faster**).
+- **Independent Emotion Classification**: 7-class emotion detection (*joy, sadness, anger, fear, surprise, disappointment, love*) trained on filtered GoEmotions text.
+- **Triple-Layer Explainability (XAI)**:
+  - *Model-Intrinsic Attention*: Real-time token highlighting driven by softmax attention weights.
+  - *Local Surrogates (LIME)*: Perturbation-based local ridge regressors to uncover directional word impact.
+  - *Game-Theoretic Attribution (Kernel SHAP)*: Evaluates Shapley values against an all-words-masked background.
+- **Unsupervised Anomaly Detection (VAE)**: Variational Autoencoder that flags unusual, spammy, or out-of-distribution text reviews via reconstruction loss.
+- **Dual User Interfaces**:
+  - *Interactive Streamlit Dashboard*: Full multi-tab analytical suite for interactive inference, XAI inspection, and model benchmarks.
+  - *FastAPI REST API & HTML Web UI*: Production-grade endpoints with Swagger documentation and CSV batch inference.
+- **Saved Checkpoint Inference**: Guaranteed zero re-training during live inference; memory-efficient PyTorch batch processing.
 
-## Dataset
+---
 
-### Sentiment
-
-The IMDB CSV uses `review` and `sentiment` columns. Duplicate/empty rows are removed; the recorded run contained 49,582 usable reviews. Its genuine labels are `positive` and `negative` only.
-
-### Emotion
-
-The emotion model uses filtered public GoEmotions data. Only exact, single-label source classes are retained: `anger`, `disappointment`, `fear`, `joy`, `love`, `sadness`, and `surprise`.
-
-## Data preprocessing
-
-Text is lowercased, HTML entities/tags and URLs are removed, and word-like English tokens are extracted. A vocabulary with `<PAD>`/`<UNK>` is fitted only on training text. Sequences are padded or truncated to a fixed length.
-
-## Neural network architecture
+## 3. System Architecture
 
 ```text
-Tokens → Embedding → BiLSTM → Additive Attention → Dropout → Dense logits → Softmax
+                               ┌────────────────────────────────────────────────────────┐
+                               │                    User Interfaces                     │
+                               │  - Streamlit Dashboard (streamlit_app.py:8501)         │
+                               │  - HTML / Vanilla JS Dashboard (static/index.html:8000)│
+                               └───────────────────────────┬────────────────────────────┘
+                                                           │ HTTP / JSON Payload
+                                                           ▼
+                               ┌────────────────────────────────────────────────────────┐
+                               │               FastAPI Backend (app.py)                 │
+                               │        Routing, Validation, Thread Concurrency         │
+                               └───────────────────────────┬────────────────────────────┘
+                                                           │
+                                                           ▼
+                               ┌────────────────────────────────────────────────────────┐
+                               │       Preprocessing Pipeline (sentixai_data.py)        │
+                               │  Tokenization, RegEx Cleaning, Vocabulary Indexing,    │
+                               │  Length Truncation & Zero-Padding (Max Length = 256)   │
+                               └───────────┬───────────────┬────────────────┬───────────┘
+                                           │               │                │
+                   ┌───────────────────────┘               │                └───────────────────────┐
+                   ▼                                       ▼                                        ▼
+    ┌─────────────────────────────┐        ┌──────────────────────────────┐         ┌──────────────────────────────┐
+    │     BiLSTM + Attention      │        │       TextCNN (1D-CNN)       │         │        Emotion BiLSTM        │
+    │  (bilstm_attention.pt)      │        │        (textcnn.pt)          │         │(emotion_bilstm_attention.pt) │
+    ├─────────────────────────────┤        ├──────────────────────────────┤         ├──────────────────────────────┤
+    │ • Embedding (128-d)         │        │ • Embedding (128-d)          │         │ • Embedding (128-d)          │
+    │ • BiLSTM (2x128=256-d state)│        │ • Conv1D (Kernels 2, 3, 4)   │         │ • BiLSTM (256-d state)       │
+    │ • Additive Masked Attention │        │ • ReLU + 1D Global Max-Pool  │         │ • Additive Masked Attention  │
+    │ • Dense -> Softmax (2-class)│        │ • Concat (192-d) + Dropout   │         │ • Dense -> Softmax (7-class) │
+    │ • Accuracy: 90.02%          │        │ • Dense -> Softmax (2-class) │         │ • Accuracy: 73.44%           │
+    │ • Latency: ~0.061 ms/sample │        │ • Latency: ~0.008 ms/sample  │         │ • Classes: joy, sadness, ... │
+    └──────────────┬──────────────┘        └──────────────┬───────────────┘         └──────────────┬───────────────┘
+                   │                                      │                                        │
+                   └──────────────────┬───────────────────┴────────────────────────────────────────┘
+                                      │
+                                      ▼
+                   ┌────────────────────────────────────────────────────────┐
+                   │             Explainable AI (sentixai_xai.py)           │
+                   │  - Attention Softmax Weights (BiLSTM)                  │
+                   │  - LIME Local Regression Perturbations                 │
+                   │  - Kernel SHAP Marginal Shapley Values                 │
+                   └────────────────────────────────────────────────────────┘
 ```
 
-`CrossEntropyLoss` receives logits while softmax is used only to produce inference probabilities.
+---
 
-## BiLSTM and attention mechanism
+## 4. Deep Learning Model Architectures
 
-The BiLSTM reads token sequences in both directions. Additive attention gives each non-padding token a normalized weight and pools the BiLSTM states into a context vector. These actual weights are exposed in inference output.
+### 1. BiLSTM with Additive Masked Attention
+- **Input**: Token sequence indices $\mathbf{x} = (x_1, \dots, x_T)$ bounded to sequence length $T=256$.
+- **Embedding Layer**: Projects tokens into dense $\mathbb{R}^{128}$ space with embedding dropout ($p=0.35$).
+- **Bidirectional LSTM**: Processes sequences forward and backward simultaneously:
+  $$\overrightarrow{h}_t = \text{LSTM}_{\text{fwd}}(x_t, \overrightarrow{h}_{t-1}), \quad \overleftarrow{h}_t = \text{LSTM}_{\text{bwd}}(x_t, \overleftarrow{h}_{t+1})$$
+  $$h_t = \left[\overrightarrow{h}_t \,\Vert\, \overleftarrow{h}_t\right] \in \mathbb{R}^{256}$$
+- **Additive Attention Mechanism**:
+  $$e_t = \mathbf{v}^T \tanh\left(\mathbf{W} h_t + \mathbf{b}\right)$$
+  $$\alpha_t = \frac{\exp(e_t)}{\sum_{k=1}^T \exp(e_k)} \quad (\text{with } e_k = -10^9 \text{ for } \langle\text{PAD}\rangle)$$
+  $$\mathbf{c} = \sum_{t=1}^T \alpha_t h_t \in \mathbb{R}^{256}$$
+- **Classification Projection**: Fully connected layer mapping $\mathbf{c} \to \mathbb{R}^2$ followed by log-softmax.
 
-## Emotion detection
+---
 
-Emotion is an independently trained model with its own vocabulary, checkpoint, and evaluation report; it is not trained from IMDB sentiment labels.
+### 2. TextCNN (Parallel 1D Convolutions)
+- **Input Transpose**: Embedding output reshaped to channel-first representation $[\text{Batch}, C=128, T=256]$.
+- **Parallel 1D Convolutional Filter Banks**: 64 filters each across kernel sizes $k \in \{2, 3, 4\}$ to capture bigram, trigram, and 4-gram phrasal patterns:
+  $$\mathbf{c}_i^{(k)} = \text{ReLU}\left(\mathbf{W}^{(k)} \ast \mathbf{x}_{i:i+k-1} + b^{(k)}\right)$$
+- **Global Max-Over-Time Pooling**:
+  $$\hat{c}_j^{(k)} = \max_{1 \le t \le T} c_{j, t}^{(k)}$$
+- **Feature Concatenation**: Combines $3 \times 64 = 192$ feature activations into a dense unified vector:
+  $$\mathbf{z} = \left[\hat{\mathbf{c}}^{(k=2)} \,\Vert\, \hat{\mathbf{c}}^{(k=3)} \,\Vert\, \hat{\mathbf{c}}^{(k=4)}\right] \in \mathbb{R}^{192}$$
+- **Regularization & Classifier**: Dropout ($p=0.5$) $\to$ Dense ($192 \to 64$, ReLU) $\to$ Output ($64 \to 2$ classes).
 
-## Explainable AI: Attention, LIME, and SHAP
+---
 
-- **Attention** displays token weights produced by the model.
-- **LIME** perturbs words, runs the saved model, and estimates local word contributions.
-- **SHAP** optionally estimates word contributions versus an all-words-masked baseline.
+### 3. Variational Autoencoder (VAE) for Anomaly Detection
+- **Objective**: Identifies outliers, gibberish, spam, or atypical reviews without manual supervision.
+- **Encoder**: Projects TF-IDF review representations into a latent Gaussian distribution parameterized by mean $\boldsymbol{\mu}$ and log-variance $\log \boldsymbol{\sigma}^2$.
+- **Reparameterization Trick**: $\mathbf{z} = \boldsymbol{\mu} + \boldsymbol{\sigma} \odot \boldsymbol{\epsilon}$, where $\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$.
+- **Decoder**: Reconstructs the input feature vector from latent space $\mathbf{z}$.
+- **Anomaly Scoring**: Reviews exhibiting abnormally high Mean Squared Error (MSE) reconstruction loss $+ \beta \cdot D_{\text{KL}}$ are flagged as anomalies.
 
-Attention is evidence of model focus, not a causal guarantee. LIME and SHAP are local approximations; Kernel SHAP is intentionally bounded because it is slower.
+---
 
-## Model comparison and hyperparameter experiments
+## 5. Empirical Performance Comparison (Held-Out Test Set)
 
-`run_experiments.py` trains MLP, LSTM, BiLSTM, and BiLSTM-attention models on the same stratified split and training vocabulary. `experiment_config.json` controls learning rate, batch size, epochs, dropout, hidden units, embedding dimensions, optimizer, and BiLSTM-attention variants. The best run is selected by **macro-F1**, rather than accuracy alone.
+Both sentiment models were evaluated on the **exact same 4,959 held-out test reviews** from the 50,000 IMDB dataset (`seed=42`, stratified 80/10/10 split):
 
-## Evaluation metrics
+| Evaluation Metric | BiLSTM + Additive Attention | TextCNN (1D-CNN) | Relative Difference / Trade-off |
+| :--- | :---: | :---: | :---: |
+| **Test Accuracy** | **90.02%** | **86.73%** | +3.29% for BiLSTM |
+| **Test Macro F1** | **90.02%** | **86.68%** | +3.34% for BiLSTM |
+| **Test Weighted F1** | **90.02%** | **86.68%** | +3.34% for BiLSTM |
+| **Test Weighted Precision** | **90.02%** | **87.21%** | +2.81% for BiLSTM |
+| **Test Weighted Recall** | **90.02%** | **86.73%** | +3.29% for BiLSTM |
+| **Trainable Parameters** | 4,137,730 | **2,646,402** | **36.0% fewer parameters** in TextCNN |
+| **Checkpoint Size (Disk)**| 15.8 MB | **10.1 MB** | **36.1% lighter** checkpoint |
+| **Inference Latency** | ~0.061 ms / sample | **~0.008 ms / sample** | **~7.6x faster inference** in TextCNN |
+| **Training Duration** | ~180.0 s | **70.39 s** | **~2.5x faster training** in TextCNN |
+| **Model Interpretability**| Attention Heatmaps + LIME + SHAP | LIME + Kernel SHAP | BiLSTM exposes native attention |
 
-Each run saves accuracy, precision, recall, weighted F1, macro-F1, classification report, confusion matrix, training curves, training time, parameter count, model size, and checkpoint.
+### Engineering Takeaways:
+1. **Choose BiLSTM + Attention** when peak classification accuracy, complex document nuances, and native attention heatmaps are mission-critical.
+2. **Choose TextCNN** for high-throughput streaming pipelines, low-latency microservices, edge devices, or resource-constrained deployments (7.6x faster inference with 36% less memory).
 
-## Results
+---
 
-These are actual held-out test results from completed training runs:
-
-| Model | Dataset | Accuracy | Weighted precision | Weighted recall | Weighted F1 |
-|---|---:|---:|---:|---:|---:|
-| BiLSTM + Attention sentiment | IMDB | 90.02% | 90.02% | 90.02% | 90.02% |
-| BiLSTM + Attention emotion | Filtered GoEmotions | 73.44% | 76.77% | 73.44% | 74.37% |
-
-The controlled architecture-comparison study is configured but has not yet produced checked-in results. Run it before claiming a best architecture.
-
-## Dashboard
-
-The FastAPI-served dashboard provides text prediction, batch CSV prediction, probabilities, explanations, confusion matrices, and training/evaluation charts.
-
-## Project structure
+## 6. Project Structure
 
 ```text
-app.py                    Dashboard/API and batch-upload routes
-static/                   Dashboard HTML, CSS, JavaScript
-sentixai_data.py          Cleaning, tokenization, vocabulary, datasets
-sentixai_model.py         Production BiLSTM-attention model
-sentixai_inference.py     Saved-checkpoint inference used by API/batch jobs
-sentixai_xai.py           Attention, LIME, SHAP explanations
-train_sentixai.py         Reproducible sentiment/emotion training
-prepare_goemotions.py     GoEmotions preparation utility
-comparison_models.py      MLP, LSTM, BiLSTM, attention architectures
-run_experiments.py        Controlled comparison runner
-outputs/                  Ignored generated model/results/download files
-data/                     Prepared emotion data and sample batch CSV
+SentixAI/
+├── app.py                            # FastAPI backend with multi-model prediction and batch routes
+├── streamlit_app.py                  # Production Streamlit UI (tabs: XAI, Batch, Analytics, Arch, VAE)
+├── requirements.txt                  # Python dependencies
+├── Dockerfile                        # Multi-stage production container configuration
+├── render.yaml                       # Render blueprint definition
+│
+├── static/                           # Classic Web Interface
+│   ├── index.html                    # Model selection dropdown and review input forms
+│   └── app.js                        # Client-side API interactions and chart rendering
+│
+├── sentixai_model.py                 # PyTorch BiLSTM + Additive Attention architecture
+├── sentixai_inference.py             # Inference class for BiLSTM models
+├── train_sentixai.py                 # Training script for BiLSTM sentiment and emotion models
+│
+├── textcnn_model.py                  # PyTorch TextCNN architecture (Kernels 2, 3, 4)
+├── textcnn_inference.py              # Inference class for TextCNN model
+├── train_textcnn.py                  # Training pipeline for TextCNN on IMDB
+├── predict_textcnn.py                # Command-line prediction tool for TextCNN
+├── evaluate_comparison.py            # Comparative evaluation script benchmarked on test set
+│
+├── vae_model.py                      # Variational Autoencoder architecture for anomaly detection
+├── vae_inference.py                  # VAE anomaly detector and scoring class
+├── train_vae.py                      # VAE training script
+│
+├── sentixai_data.py                  # Tokenization, cleaning, and vocabulary creation
+├── sentixai_xai.py                   # XAI engines: Attention, LIME, and Kernel SHAP
+├── prepare_goemotions.py             # Preprocessing pipeline for GoEmotions dataset
+│
+├── outputs/                          # Saved Checkpoints and Evaluation Artifacts
+│   ├── artifacts/
+│   │   ├── bilstm_attention.pt       # Trained BiLSTM sentiment weights (15.8 MB)
+│   │   └── vocabulary.json           # BiLSTM sentiment vocabulary
+│   ├── results/
+│   │   ├── evaluation.json           # BiLSTM held-out evaluation report
+│   │   └── confusion_matrix.png      # BiLSTM test confusion matrix
+│   ├── textcnn/
+│   │   ├── artifacts/
+│   │   │   ├── textcnn.pt            # Trained TextCNN weights (10.1 MB)
+│   │   │   └── vocabulary.json       # TextCNN vocabulary mapping
+│   │   └── results/
+│   │       ├── evaluation.json       # TextCNN test evaluation report
+│   │       ├── model_comparison.json # Side-by-side comparative metrics
+│   │       ├── confusion_matrix.png  # TextCNN confusion matrix
+│   │       └── training_curves.png   # TextCNN loss and accuracy curves
+│   ├── emotion/
+│   │   ├── artifacts/
+│   │   │   └── emotion_bilstm_attention.pt # Trained Emotion BiLSTM weights
+│   │   └── results/
+│   │       ├── evaluation.json       # Emotion evaluation report
+│   │       └── confusion_matrix.png  # Emotion 7-class confusion matrix
+│   └── vae/
+│       ├── artifacts/
+│       │   ├── vae_model.pt          # Trained VAE weights
+│       │   ├── vae_vectorizer.pkl    # Fitted TF-IDF vectorizer
+│       │   └── vae_scaler.pkl        # Fitted standard scaler
+│       └── results/
+│           └── unusual_reviews.csv   # Detected anomalies
 ```
 
-## Installation
+---
 
+## 7. Installation & Local Setup
+
+### 1. Clone Repository & Setup Virtual Environment
 ```bash
-cd /Users/govindprasadshaw/Desktop/DL_Projects
+git clone https://github.com/govindshaw67/SentixAI.git
+cd SentixAI
+
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-## Training
+---
 
-Train sentiment:
+## 8. Running the Application
 
-```bash
-python train_sentixai.py --csv "/Users/govindprasadshaw/Downloads/DATASETS/IMDB Dataset.csv" --output-dir outputs
-```
-
-Prepare and train emotion:
+### Option 1: Streamlit Analytical Dashboard (Recommended)
+Launch the comprehensive multi-tab dashboard:
 
 ```bash
-python prepare_goemotions.py --output data/goemotions_target_emotions.csv
-python train_sentixai.py --csv data/goemotions_target_emotions.csv --text-column text --label-column emotion --output-dir outputs/emotion --model-name emotion_bilstm_attention.pt
-```
-
-Run the controlled comparison study:
-
-```bash
-python run_experiments.py --config experiment_config.json --csv "/Users/govindprasadshaw/Downloads/DATASETS/IMDB Dataset.csv"
-```
-
-It writes report-ready results to `outputs/experiments/`, including comparison CSV/JSON files, charts, checkpoints, and per-run confusion matrices.
-
-## Testing
-
-```bash
-python predict_sentixai.py --text "This movie was excellent and enjoyable." --model-dir outputs/artifacts
-python predict_sentixai_full.py --text "The service was slow and the product arrived damaged."
-python explain_sentixai.py --text "The camera is excellent but the battery is terrible." --model sentiment --methods attention lime shap
-```
-
-## Running the application
-
-### Option 1: Streamlit Dashboard (Recommended for Live Demo & Sharing)
-
-Run the interactive Explainable AI dashboard with token attention heatmaps, LIME, SHAP, batch CSV analysis, and model curves:
-
-```bash
+source .venv/bin/activate
 streamlit run streamlit_app.py
 ```
+- Open **`http://localhost:8501`** in your browser.
+- **Tab 1: Inference & XAI**: Select between `BiLSTM + Attention` and `TextCNN`, inspect sentiment probabilities, emotion classification, attention heatmaps, LIME, and SHAP.
+- **Tab 2: Batch CSV Processing**: Upload a CSV with a `review` column and select the processing architecture.
+- **Tab 3: Model Analytics**: View convergence loss curves, test confusion matrices, and detailed classification reports.
+- **Tab 4: Architecture & Theory**: Inspect side-by-side empirical performance comparison tables and network diagrams.
+- **Tab 6: Unusual Review Detection**: Scan reviews for anomalies using the Variational Autoencoder.
 
-Open `http://localhost:8501` in your browser.
+---
 
-### Option 2: FastAPI Backend & Classic Dashboard
+### Option 2: FastAPI Backend & Classic Web Dashboard
+Start the production Uvicorn ASGI server:
 
 ```bash
-python -m uvicorn app:app --reload
+source .venv/bin/activate
+uvicorn app:app --port 8000 --reload
+```
+- **Web Interface**: Open **`http://localhost:8000`** in your browser.
+- **Interactive Swagger Docs**: Open **`http://localhost:8000/docs`** to test endpoints interactively.
+
+---
+
+### Option 3: Command-Line Interface (CLI)
+Run instant predictions from your terminal:
+
+```bash
+# Test TextCNN prediction
+python predict_textcnn.py "The cinematography was breathtaking and the plot was engaging."
+
+# Re-run empirical evaluation on the 4,959 test set
+python evaluate_comparison.py
 ```
 
-Open `http://127.0.0.1:8000` in your browser.
+---
 
-## Deployment & Sharable Link (Streamlit Cloud vs Render vs Vercel)
+## 9. API Reference
 
-### 1. Deploying to Streamlit Community Cloud (Recommended)
+### `POST /api/predict`
+Predict sentiment and emotion with on-demand explainability.
 
-Streamlit Community Cloud is 100% free, runs native PyTorch without memory/bundle limits, and provides a permanent public URL (e.g. `https://sentixai.streamlit.app`):
+**Request Payload:**
+```json
+{
+  "text": "The camera is excellent but the battery life is terrible.",
+  "model_type": "textcnn",
+  "include_emotion": true,
+  "methods": ["attention", "lime", "shap"],
+  "lime_samples": 60,
+  "shap_samples": 40
+}
+```
+*Note: `model_type` accepts `"bilstm"` (default) or `"textcnn"`.*
 
+**Response:**
+```json
+{
+  "sentiment": {
+    "label": "negative",
+    "confidence": 0.8421,
+    "probabilities": {
+      "negative": 0.8421,
+      "positive": 0.1579
+    },
+    "model_used": "TextCNN"
+  },
+  "sentiment_confidence": 0.8421,
+  "model_type": "TextCNN",
+  "emotion": {
+    "label": "disappointment",
+    "confidence": 0.8124,
+    "probabilities": { ... }
+  },
+  "explanation": {
+    "sentiment": [
+      {
+        "method": "lime",
+        "predicted_class": "negative",
+        "important_words": [
+          {"token": "terrible", "contribution": 0.412},
+          {"token": "excellent", "contribution": -0.218}
+        ]
+      }
+    ]
+  }
+}
+```
+
+### `POST /api/batch`
+Upload a CSV file containing a `review` column (up to 5,000 rows). Returns processed classifications and download URL.
+
+### `GET /health`
+Returns system status and model readiness:
+```json
+{
+  "status": "ok",
+  "sentiment_model_bilstm": true,
+  "sentiment_model_textcnn": true,
+  "emotion_model": true
+}
+```
+
+### `GET /api/analytics`
+Returns held-out test metrics, class names, and training convergence histories for both models.
+
+---
+
+## 10. Training Pipelines
+
+### Train TextCNN Model
+```bash
+python train_textcnn.py \
+  --csv "/path/to/IMDB Dataset.csv" \
+  --output-dir outputs/textcnn \
+  --epochs 6 \
+  --batch-size 64 \
+  --learning-rate 0.001
+```
+
+### Train BiLSTM-Attention Model
+```bash
+python train_sentixai.py \
+  --csv "/path/to/IMDB Dataset.csv" \
+  --output-dir outputs \
+  --epochs 6 \
+  --batch-size 64
+```
+
+### Train Emotion Classifier
+```bash
+python prepare_goemotions.py --output data/goemotions_target_emotions.csv
+python train_sentixai.py \
+  --csv data/goemotions_target_emotions.csv \
+  --text-column text \
+  --label-column emotion \
+  --output-dir outputs/emotion \
+  --model-name emotion_bilstm_attention.pt
+```
+
+### Train VAE Anomaly Detector
+```bash
+python train_vae.py \
+  --csv "/path/to/IMDB Dataset.csv" \
+  --output-dir outputs/vae \
+  --epochs 10 \
+  --latent-dim 32
+```
+
+---
+
+## 11. Deployment Guide
+
+### Deploying to Streamlit Community Cloud (Recommended)
+Streamlit Cloud offers seamless native PyTorch execution with persistent containers:
 1. Push your repository to GitHub:
    ```bash
-   git add .
-   git commit -m "Add Streamlit Explainable AI dashboard"
    git push origin main
    ```
-2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
-3. Click **"New App"** (or **"Create app"**).
-4. Select:
+2. Navigate to [share.streamlit.io](https://share.streamlit.io) and log in with GitHub.
+3. Click **"New App"** and configure:
    - **Repository:** `govindshaw67/SentixAI`
    - **Branch:** `main`
    - **Main file path:** `streamlit_app.py`
-5. Click **"Deploy!"** Your public sharable link will be live in 1-2 minutes!
+4. Click **"Deploy"**. The app will be live with a permanent URL.
 
-### 2. Why Not Vercel for PyTorch Deep Learning?
+### Deploying with Docker / Render
+The project includes an optimized Dockerfile using CPU-only PyTorch to fit within cloud free tiers:
+```bash
+docker build -t sentixai .
+docker run -p 8000:8000 sentixai
+```
 
-- **Bundle Size Limit:** Vercel Serverless Functions enforce a strict **250MB uncompressed limit**. PyTorch, SciPy, Scikit-learn, LIME, and SHAP together exceed 1.2GB, causing serverless build failure.
-- **Execution Timeouts:** XAI computations like LIME and SHAP can take 5-15 seconds, hitting Vercel's strict 10s-15s serverless timeout caps.
-- **Vercel Static Hosting:** If desired, Vercel can host the static HTML/CSS/JS frontend (`vercel.json` is provided in the repository) while the models run on a dedicated Python service. However, Streamlit Cloud hosts the full model + UI seamlessly in one place at zero cost.
+---
 
-## Security and reproducibility
+## 12. Methodological Note: Domain & Sequence Length Awareness
 
-The project requires no API keys. `.gitignore` excludes virtual environments, outputs, and `.env` files. Do not commit credentials or private datasets. Training seeds are fixed and deterministic operations are requested where supported by the PyTorch backend.
+In natural language processing, models inherit characteristics from their training corpora:
+- **Long-Form Review Domain**: Both BiLSTM and TextCNN are trained on IMDB movie critiques (average length: ~230 words). They excel at extracting sentiment from complete reviews (e.g., *"The performances were magnificent and the visuals stunned"* $\to$ 99.8% Positive).
+- **Short Conversational Fragments**: For isolated personal statements without review context (e.g., *"i am happy man"*), first-person phrasing (`"i am..."`) carries a statistical association with review complaints in the movie domain. 
+- **Complementary Roles**: For short personal emotional expressions, users can refer to the **Emotion Classifier** (trained on conversational GoEmotions), which accurately identifies expressions like *"i am happy man"* as **`joy` (97.89% confidence)**.
 
-## Limitations
+---
 
-- Sentiment supports only positive/negative; Neutral is deliberately marked not trained.
-- Emotion supports seven source-labelled classes; Frustration is deliberately marked not trained.
-- Models are English-focused and reflect IMDB/GoEmotions domains.
-- Customer-service complaints can produce unintuitive emotion labels because they are outside the emotion model's main domain.
-- LIME/SHAP add inference time; SHAP is bounded.
-- Architecture-comparison metrics are pending until the configured study is run.
+## 13. License & Acknowledgments
 
-## Future scope
+This project is released under the **MIT License**.
 
-- Train real three-class sentiment data including neutral.
-- Add frustration-labelled customer-support data.
-- Add labelled multilingual data and multilingual models.
-- Add aspect-based sentiment labels/models.
-- Run repeated-seed/cross-validation comparison experiments.
-- Add authentication, rate limiting, storage, and monitoring for non-local deployment.
+- **IMDB Dataset**: Maas et al. (2011), *Learning Word Vectors for Sentiment Analysis*.
+- **GoEmotions Dataset**: Demszky et al. (2020), *GoEmotions: A Dataset of Fine-Grained Emotions*.
+- **Convolutional Architecture**: Kim (2014), *Convolutional Neural Networks for Sentence Classification*.
+- **Explainability**: Ribeiro et al. (2016) for LIME; Lundberg & Lee (2017) for SHAP.
