@@ -26,8 +26,8 @@ class PredictionRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     methods: list[str] = Field(default_factory=lambda: ["attention"])
     include_emotion: bool = True
-    lime_samples: int = Field(default=500, ge=100, le=2000)
-    shap_samples: int = Field(default=160, ge=50, le=500)
+    lime_samples: int = Field(default=80, ge=10, le=1000)
+    shap_samples: int = Field(default=50, ge=10, le=300)
 
 
 @lru_cache
@@ -47,11 +47,30 @@ def explain(classifier: SavedTextClassifier, prediction: dict, text: str, method
         raise ValueError(f"Unsupported explanation method(s): {', '.join(sorted(invalid))}")
     result = {}
     if "attention" in selected:
-        result["attention"] = attention_explanation(prediction)
+        try:
+            result["attention"] = attention_explanation(prediction)
+        except Exception as err:
+            result["attention"] = {"method": "attention", "important_words": [], "note": f"Attention unavailable: {err}"}
     if "lime" in selected:
-        result["lime"] = lime_explanation(classifier, text, num_samples=request.lime_samples)
+        try:
+            result["lime"] = lime_explanation(classifier, text, num_samples=request.lime_samples)
+        except Exception as err:
+            result["lime"] = {
+                "method": "lime",
+                "predicted_class": prediction.get("label", ""),
+                "important_words": [],
+                "note": f"LIME unavailable: {err}",
+            }
     if "shap" in selected:
-        result["shap"] = shap_explanation(classifier, text, nsamples=request.shap_samples)
+        try:
+            result["shap"] = shap_explanation(classifier, text, nsamples=request.shap_samples)
+        except Exception as err:
+            result["shap"] = {
+                "method": "shap",
+                "predicted_class": prediction.get("label", ""),
+                "important_words": [],
+                "note": f"SHAP unavailable: {err}",
+            }
     return result
 
 

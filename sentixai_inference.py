@@ -48,17 +48,18 @@ class SavedTextClassifier:
             "attention_tokens": attention_tokens,
         }
 
-    def predict_probabilities(self, texts: list[str]) -> np.ndarray:
-        """LIME/SHAP-compatible classifier function using this exact checkpoint."""
-        encoded = []
-        for text in texts:
-            tokens = clean_and_tokenize(text) or ["[empty]"]
-            encoded.append(encode_tokens(tokens, self.vocabulary, self.max_length))
-        with torch.no_grad():
-            token_ids = torch.tensor(encoded, dtype=torch.long, device=self.device)
-            logits, _ = self.model(token_ids)
-            probabilities = torch.softmax(logits, dim=1).cpu().numpy()
-        return np.asarray(probabilities)
+    def predict_probabilities(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
+        """LIME/SHAP-compatible classifier function with memory-bounded chunking."""
+        token_lists = [clean_and_tokenize(text) or ["[empty]"] for text in texts]
+        all_probabilities = []
+        with torch.inference_mode():
+            for start in range(0, len(token_lists), batch_size):
+                chunk = token_lists[start : start + batch_size]
+                encoded = [encode_tokens(tokens, self.vocabulary, self.max_length) for tokens in chunk]
+                token_ids = torch.tensor(encoded, dtype=torch.long, device=self.device)
+                logits, _ = self.model(token_ids)
+                all_probabilities.append(torch.softmax(logits, dim=1).cpu().numpy())
+        return np.vstack(all_probabilities) if all_probabilities else np.empty((0, len(self.class_names)))
 
     def predict_many(self, texts: list[str], batch_size: int = 128) -> list[dict]:
         """Efficient batch prediction from the same saved model checkpoint."""

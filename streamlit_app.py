@@ -198,20 +198,20 @@ with st.sidebar:
 
     lime_samples = st.slider(
         "LIME Sample Count",
-        min_value=100,
-        max_value=1000,
-        value=300,
-        step=50,
+        min_value=40,
+        max_value=300,
+        value=100,
+        step=20,
         help="Higher sample counts produce more stable perturbation weights with moderate compute time.",
     )
 
     if show_shap:
         shap_samples = st.slider(
             "Kernel SHAP Evaluation Budget",
-            min_value=40,
-            max_value=200,
-            value=80,
-            step=20,
+            min_value=20,
+            max_value=120,
+            value=50,
+            step=10,
             help="Evaluates feature combinations against an all-words-masked baseline.",
         )
     else:
@@ -449,55 +449,64 @@ with tab_predict:
                     if show_lime:
                         st.markdown("#### 2. LIME (Local Interpretable Model-agnostic Explanations)")
                         with st.spinner("Computing local surrogate perturbations..."):
-                            lime_res = lime_explanation(sent_clf, user_text, num_features=10, num_samples=lime_samples)
-                            lime_words = lime_res.get("important_words", [])
+                            try:
+                                lime_res = lime_explanation(sent_clf, user_text, num_features=10, num_samples=lime_samples)
+                                lime_words = lime_res.get("important_words", [])
 
-                            if lime_words:
-                                lime_df = pd.DataFrame(lime_words)
-                                lime_df["direction"] = np.where(
-                                    lime_df["contribution"] >= 0, "Supports Prediction", "Opposes Prediction"
-                                )
-                                lime_df["abs_contrib"] = lime_df["contribution"].abs()
+                                if lime_words:
+                                    lime_df = pd.DataFrame(lime_words)
+                                    lime_df["direction"] = np.where(
+                                        lime_df["contribution"] >= 0, "Supports Prediction", "Opposes Prediction"
+                                    )
+                                    lime_df["abs_contrib"] = lime_df["contribution"].abs()
+                                    lime_df = (
+                                        lime_df.groupby("token", as_index=False)
+                                        .agg({"contribution": "mean", "direction": "first", "abs_contrib": "max"})
+                                        .sort_values(by="abs_contrib", ascending=False)
+                                        .head(10)
+                                    )
 
-                                col_l1, col_l2 = st.columns([3, 2])
-                                with col_l1:
-                                    lime_chart = (
-                                        alt.Chart(lime_df)
-                                        .mark_bar(cornerRadius=3)
-                                        .encode(
-                                            x=alt.X("contribution:Q", title="Local Regression Weight"),
-                                            y=alt.Y(
-                                                "token:N",
-                                                sort=alt.EncodingSortField(field="abs_contrib", order="descending"),
-                                                title="Token",
-                                            ),
-                                            color=alt.Color(
-                                                "direction:N",
-                                                scale=alt.Scale(
-                                                    domain=["Supports Prediction", "Opposes Prediction"],
-                                                    range=["#10b981", "#ef4444"],
+                                    col_l1, col_l2 = st.columns([3, 2])
+                                    with col_l1:
+                                        lime_chart = (
+                                            alt.Chart(lime_df)
+                                            .mark_bar(cornerRadius=3)
+                                            .encode(
+                                                x=alt.X("contribution:Q", title="Local Regression Weight"),
+                                                y=alt.Y(
+                                                    "token:N",
+                                                    sort=alt.EncodingSortField(field="abs_contrib", order="descending"),
+                                                    title="Token",
                                                 ),
-                                                legend=alt.Legend(title="Effect"),
-                                            ),
-                                            tooltip=["token", "contribution", "direction"],
+                                                color=alt.Color(
+                                                    "direction:N",
+                                                    scale=alt.Scale(
+                                                        domain=["Supports Prediction", "Opposes Prediction"],
+                                                        range=["#10b981", "#ef4444"],
+                                                    ),
+                                                    legend=alt.Legend(title="Effect"),
+                                                ),
+                                                tooltip=["token", "contribution", "direction"],
+                                            )
+                                            .properties(
+                                                height=270,
+                                                title=f"LIME Word Weights toward '{sent_pred['label'].upper()}'",
+                                            )
                                         )
-                                        .properties(
-                                            height=270,
-                                            title=f"LIME Word Weights toward '{sent_pred['label'].upper()}'",
-                                        )
-                                    )
-                                    st.altair_chart(lime_chart, use_container_width=True)
+                                        st.altair_chart(lime_chart, use_container_width=True)
 
-                                with col_l2:
-                                    st.markdown(f"###### Feature Weights ({lime_samples} samples)")
-                                    st.dataframe(
-                                        lime_df[["token", "contribution", "direction"]].rename(
-                                            columns={"token": "Token", "contribution": "Weight", "direction": "Effect"}
-                                        ),
-                                        use_container_width=True,
-                                        hide_index=True,
-                                    )
-                                st.caption(lime_res.get("note", ""))
+                                    with col_l2:
+                                        st.markdown(f"###### Feature Weights ({lime_samples} samples)")
+                                        st.dataframe(
+                                            lime_df[["token", "contribution", "direction"]].rename(
+                                                columns={"token": "Token", "contribution": "Weight", "direction": "Effect"}
+                                            ),
+                                            use_container_width=True,
+                                            hide_index=True,
+                                        )
+                                    st.caption(lime_res.get("note", ""))
+                            except Exception as lime_err:
+                                st.warning(f"LIME computation unavailable: {lime_err}")
 
                     # 3. Kernel SHAP
                     if show_shap:
@@ -513,6 +522,12 @@ with tab_predict:
                                         shap_df["contribution"] >= 0, "Positive Impact", "Negative Impact"
                                     )
                                     shap_df["abs_contrib"] = shap_df["contribution"].abs()
+                                    shap_df = (
+                                        shap_df.groupby("token", as_index=False)
+                                        .agg({"contribution": "mean", "direction": "first", "abs_contrib": "max"})
+                                        .sort_values(by="abs_contrib", ascending=False)
+                                        .head(10)
+                                    )
 
                                     col_s1, col_s2 = st.columns([3, 2])
                                     with col_s1:
