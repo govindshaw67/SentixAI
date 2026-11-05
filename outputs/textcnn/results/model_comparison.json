@@ -1,0 +1,26 @@
+{
+  "dataset": "/Users/govindprasadshaw/Downloads/DATASETS/IMDB Dataset.csv",
+  "test_samples": 4959,
+  "models": {
+    "BiLSTM_Attention": {
+      "accuracy": 0.9001814882032668,
+      "precision_weighted": 0.9002488283887364,
+      "recall_weighted": 0.9001814882032668,
+      "f1_weighted": 0.9001799782331341,
+      "f1_macro": 0.9001809036986993,
+      "parameters": 4137730,
+      "model_size_mb": 15.79,
+      "latency_ms_per_sample": 0.061
+    },
+    "TextCNN": {
+      "accuracy": 0.8673119580560597,
+      "precision_weighted": 0.8721402313698968,
+      "recall_weighted": 0.8673119580560597,
+      "f1_weighted": 0.8668459118911914,
+      "f1_macro": 0.8668147327463588,
+      "parameters": 2646402,
+      "model_size_mb": 10.1,
+      "latency_ms_per_sample": 0.008
+    }
+  }
+}

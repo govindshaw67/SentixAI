@@ -18,6 +18,7 @@ import torch
 
 from sentixai_inference import SavedTextClassifier
 from sentixai_xai import attention_explanation, lime_explanation, shap_explanation
+from textcnn_inference import SavedTextCNNClassifier
 from vae_inference import VAEAnomalyDetector
 
 # Path definitions
@@ -120,6 +121,15 @@ def get_sentiment_model() -> SavedTextClassifier:
     return SavedTextClassifier(artifact_dir, "bilstm_attention.pt")
 
 
+@st.cache_resource(show_spinner="Loading TextCNN Classifier...")
+def get_textcnn_model() -> SavedTextCNNClassifier | None:
+    """Load TextCNN sentiment model with caching."""
+    artifact_dir = ROOT / "outputs/textcnn/artifacts"
+    if (artifact_dir / "textcnn.pt").exists():
+        return SavedTextCNNClassifier(artifact_dir, "textcnn.pt")
+    return None
+
+
 @st.cache_resource(show_spinner="Loading Emotion Classifier...")
 def get_emotion_model() -> SavedTextClassifier:
     """Load emotion BiLSTM attention model with caching."""
@@ -141,6 +151,20 @@ def load_evaluation_data() -> dict[str, Any]:
             data["sentiment"] = json.loads(sentiment_path.read_text(encoding="utf-8"))
         except Exception:
             data["sentiment"] = None
+
+    textcnn_path = ROOT / "outputs/textcnn/results/evaluation.json"
+    if textcnn_path.exists():
+        try:
+            data["textcnn"] = json.loads(textcnn_path.read_text(encoding="utf-8"))
+        except Exception:
+            data["textcnn"] = None
+
+    comparison_path = ROOT / "outputs/textcnn/results/model_comparison.json"
+    if comparison_path.exists():
+        try:
+            data["comparison"] = json.loads(comparison_path.read_text(encoding="utf-8"))
+        except Exception:
+            data["comparison"] = None
 
     emotion_path = ROOT / "outputs/emotion/results/evaluation.json"
     if emotion_path.exists():
@@ -177,10 +201,20 @@ with st.sidebar:
     st.markdown("#### Model Status")
     try:
         sent_clf = get_sentiment_model()
-        st.success("Sentiment Model: Active (IMDB, 90.02% Accuracy)")
+        st.success("Sentiment Model (BiLSTM): Active (IMDB, 90.02% Accuracy)")
     except Exception as exc:
         st.error(f"Sentiment Model: Offline ({exc})")
         sent_clf = None
+
+    try:
+        textcnn_clf = get_textcnn_model()
+        if textcnn_clf:
+            st.success("Sentiment Model (TextCNN): Active (IMDB, 86.73% Accuracy)")
+        else:
+            st.warning("TextCNN Model: Weights pending")
+    except Exception as exc:
+        st.error(f"TextCNN Model: Offline ({exc})")
+        textcnn_clf = None
 
     try:
         emo_clf = get_emotion_model()
@@ -253,11 +287,24 @@ with tab_predict:
         "Unexpected Finding": "The experimental results were surprisingly different from the published baseline figures.",
     }
 
-    selected_sample = st.selectbox(
-        "Benchmark Examples:",
-        options=list(sample_presets.keys()),
-        index=1,
-    )
+    col_model, col_sample = st.columns([1, 1])
+    with col_model:
+        model_choice = st.selectbox(
+            "Sentiment Architecture:",
+            options=["BiLSTM + Additive Attention (90.02% Acc)", "TextCNN (1D-CNN, Kernels 2,3,4 - 86.73% Acc)"],
+            index=0,
+            help="Select the deep learning model architecture used for sentiment classification.",
+        )
+    with col_sample:
+        selected_sample = st.selectbox(
+            "Benchmark Examples:",
+            options=list(sample_presets.keys()),
+            index=1,
+        )
+
+    is_textcnn = "TextCNN" in model_choice
+    active_sent_clf = textcnn_clf if (is_textcnn and textcnn_clf) else sent_clf
+    active_model_name = "TextCNN (1D-CNN)" if is_textcnn else "BiLSTM + Attention"
 
     default_text = (
         sample_presets[selected_sample]
@@ -279,12 +326,12 @@ with tab_predict:
     if analyze_clicked or user_text:
         if not user_text.strip():
             st.warning("Input text cannot be empty.")
-        elif not sent_clf:
-            st.error("Sentiment model checkpoint is unavailable.")
+        elif not active_sent_clf:
+            st.error(f"{active_model_name} model checkpoint is unavailable.")
         else:
             with st.spinner("Executing neural inference and generating feature attributions..."):
                 try:
-                    sent_pred = sent_clf.predict(user_text)
+                    sent_pred = active_sent_clf.predict(user_text)
                     emo_pred = emo_clf.predict(user_text) if (include_emotion and emo_clf) else None
 
                     col_sent, col_emo = st.columns(2)
@@ -299,7 +346,7 @@ with tab_predict:
                             f"""
                             <div class="pred-card {card_class}">
                                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                                    <span style="color:#94a3b8; font-weight:600; font-size:0.8rem; letter-spacing:0.05em;">SENTIMENT CLASSIFICATION</span>
+                                    <span style="color:#94a3b8; font-weight:600; font-size:0.8rem; letter-spacing:0.05em;">SENTIMENT — {active_model_name.upper()}</span>
                                     <span style="background:{badge_color}; color:white; padding:2px 10px; border-radius:4px; font-weight:600; font-size:0.8rem;">{sent_label}</span>
                                 </div>
                                 <h3 style="margin:10px 0 4px 0; font-size:1.6rem; font-weight:700; color:#f8fafc;">{sent_label}</h3>
@@ -392,65 +439,72 @@ with tab_predict:
 
                     # 1. Additive Attention
                     if show_attention:
-                        st.markdown("#### 1. BiLSTM Additive Attention Layer")
-                        attn_tokens = sent_pred.get("attention_tokens", [])
-                        if attn_tokens:
-                            max_weight = max((item["weight"] for item in attn_tokens), default=0.001)
-
-                            chips_html = []
-                            for item in attn_tokens:
-                                w = item["weight"]
-                                norm_w = w / (max_weight + 1e-6)
-                                bg_alpha = max(0.12, min(0.92, norm_w * 0.92))
-                                text_color = "#ffffff" if norm_w > 0.4 else "#cbd5e1"
-                                chip = (
-                                    f'<span class="attn-chip" style="background: rgba(99, 102, 241, {bg_alpha:.2f}); '
-                                    f'color: {text_color};" title="Weight: {w:.4f}">'
-                                    f'{item["token"]} <small style="opacity:0.75; font-size:0.75em;">({w:.3f})</small></span>'
-                                )
-                                chips_html.append(chip)
-
-                            st.markdown(
-                                f"""
-                                <div class="attention-box">
-                                    {' '.join(chips_html)}
-                                </div>
-                                """,
-                                unsafe_allow_html=True,
+                        st.markdown("#### 1. Attention Analysis")
+                        if is_textcnn:
+                            st.info(
+                                "ℹ️ **TextCNN utilizes temporal max-pooling over parallel 1D convolutional filters (kernel sizes 2, 3, 4) rather than an additive soft-attention mechanism.** "
+                                "Because representations are pooled via spatial max-over-time rather than attention scoring, token-level interpretability is provided below via LIME local surrogate perturbations and Kernel SHAP game-theoretic attribution."
                             )
-                            st.caption(
-                                "Token background intensity represents normalized softmax attention weights allocated during sequence context pooling."
-                            )
+                        else:
+                            st.markdown("##### BiLSTM Additive Attention Layer")
+                            attn_tokens = sent_pred.get("attention_tokens", [])
+                            if attn_tokens:
+                                max_weight = max((item["weight"] for item in attn_tokens), default=0.001)
 
-                            col_attn_chart, col_attn_table = st.columns([3, 2])
-                            with col_attn_chart:
-                                top_attn_df = pd.DataFrame(attn_tokens).sort_values("weight", ascending=False).head(10)
-                                attn_bar = (
-                                    alt.Chart(top_attn_df)
-                                    .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3, color="#6366f1")
-                                    .encode(
-                                        x=alt.X("weight:Q", title="Attention Weight (Softmax)"),
-                                        y=alt.Y("token:N", sort="-x", title="Token"),
-                                        tooltip=["token", "weight"],
+                                chips_html = []
+                                for item in attn_tokens:
+                                    w = item["weight"]
+                                    norm_w = w / (max_weight + 1e-6)
+                                    bg_alpha = max(0.12, min(0.92, norm_w * 0.92))
+                                    text_color = "#ffffff" if norm_w > 0.4 else "#cbd5e1"
+                                    chip = (
+                                        f'<span class="attn-chip" style="background: rgba(99, 102, 241, {bg_alpha:.2f}); '
+                                        f'color: {text_color};" title="Weight: {w:.4f}">'
+                                        f'{item["token"]} <small style="opacity:0.75; font-size:0.75em;">({w:.3f})</small></span>'
                                     )
-                                    .properties(height=260, title="Top Token Attention Weights")
-                                )
-                                st.altair_chart(attn_bar, use_container_width=True)
+                                    chips_html.append(chip)
 
-                            with col_attn_table:
-                                st.markdown("###### Ranked Token Weights")
-                                st.dataframe(
-                                    top_attn_df.rename(columns={"token": "Token", "weight": "Weight"}),
-                                    use_container_width=True,
-                                    hide_index=True,
+                                st.markdown(
+                                    f"""
+                                    <div class="attention-box">
+                                        {' '.join(chips_html)}
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True,
                                 )
+                                st.caption(
+                                    "Token background intensity represents normalized softmax attention weights allocated during sequence context pooling."
+                                )
+
+                                col_attn_chart, col_attn_table = st.columns([3, 2])
+                                with col_attn_chart:
+                                    top_attn_df = pd.DataFrame(attn_tokens).sort_values("weight", ascending=False).head(10)
+                                    attn_bar = (
+                                        alt.Chart(top_attn_df)
+                                        .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3, color="#6366f1")
+                                        .encode(
+                                            x=alt.X("weight:Q", title="Attention Weight (Softmax)"),
+                                            y=alt.Y("token:N", sort="-x", title="Token"),
+                                            tooltip=["token", "weight"],
+                                        )
+                                        .properties(height=260, title="Top Token Attention Weights")
+                                    )
+                                    st.altair_chart(attn_bar, use_container_width=True)
+
+                                with col_attn_table:
+                                    st.markdown("###### Ranked Token Weights")
+                                    st.dataframe(
+                                        top_attn_df.rename(columns={"token": "Token", "weight": "Weight"}),
+                                        use_container_width=True,
+                                        hide_index=True,
+                                    )
 
                     # 2. LIME
                     if show_lime:
                         st.markdown("#### 2. LIME (Local Interpretable Model-agnostic Explanations)")
                         with st.spinner("Computing local surrogate perturbations..."):
                             try:
-                                lime_res = lime_explanation(sent_clf, user_text, num_features=10, num_samples=lime_samples)
+                                lime_res = lime_explanation(active_sent_clf, user_text, num_features=10, num_samples=lime_samples)
                                 lime_words = lime_res.get("important_words", [])
 
                                 if lime_words:
@@ -490,7 +544,7 @@ with tab_predict:
                                             )
                                             .properties(
                                                 height=270,
-                                                title=f"LIME Word Weights toward '{sent_pred['label'].upper()}'",
+                                                title=f"LIME Word Weights toward '{sent_pred['label'].upper()}' ({active_model_name})",
                                             )
                                         )
                                         st.altair_chart(lime_chart, use_container_width=True)
@@ -513,7 +567,7 @@ with tab_predict:
                         st.markdown("#### 3. Kernel SHAP (SHapley Additive exPlanations)")
                         with st.spinner("Computing Shapley values against masked baseline..."):
                             try:
-                                shap_res = shap_explanation(sent_clf, user_text, max_tokens=16, nsamples=shap_samples)
+                                shap_res = shap_explanation(active_sent_clf, user_text, max_tokens=16, nsamples=shap_samples)
                                 shap_words = shap_res.get("important_words", [])
 
                                 if shap_words:
@@ -627,6 +681,14 @@ with tab_batch:
             with st.expander("Preview Input Records", expanded=False):
                 st.dataframe(input_df.head(10), use_container_width=True)
 
+            batch_model = st.radio(
+                "Sentiment Model for Batch Run:",
+                options=["BiLSTM + Attention", "TextCNN (1D-CNN)"],
+                index=0,
+                horizontal=True,
+                help="TextCNN processes batches ~6x faster than BiLSTM with 86.73% accuracy.",
+            )
+
             if st.button("Execute Batch Inference", type="primary"):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -637,9 +699,10 @@ with tab_batch:
                 if not valid_reviews:
                     st.error("All rows in the review column are empty.")
                 else:
-                    status_text.text("Processing Sentiment BiLSTM batches...")
+                    batch_sent_clf = textcnn_clf if ("TextCNN" in batch_model and textcnn_clf) else sent_clf
+                    status_text.text(f"Processing Sentiment {batch_model} batches...")
                     progress_bar.progress(25)
-                    sent_results = sent_clf.predict_many(valid_reviews, batch_size=128)
+                    sent_results = batch_sent_clf.predict_many(valid_reviews, batch_size=128)
 
                     status_text.text("Processing Emotion BiLSTM batches...")
                     progress_bar.progress(65)
@@ -742,6 +805,7 @@ with tab_analytics:
 
     eval_data = load_evaluation_data()
     sent_eval = eval_data.get("sentiment")
+    textcnn_eval = eval_data.get("textcnn")
     emo_eval = eval_data.get("emotion")
 
     st.markdown("##### Held-out Test Set Performance")
@@ -749,17 +813,17 @@ with tab_analytics:
     if sent_eval:
         s_acc = sent_eval["test_metrics"]["accuracy"] * 100
         s_f1 = sent_eval["test_metrics"]["f1_weighted"] * 100
-        kpi_cols[0].metric("Sentiment Accuracy", f"{s_acc:.2f}%", help="Evaluated on 4,959 test reviews")
-        kpi_cols[1].metric("Sentiment Weighted F1", f"{s_f1:.2f}%")
-    if emo_eval:
-        e_acc = emo_eval["test_metrics"]["accuracy"] * 100
-        e_f1 = emo_eval["test_metrics"]["f1_weighted"] * 100
-        kpi_cols[2].metric("Emotion Accuracy", f"{e_acc:.2f}%", help="Evaluated on 738 test samples")
-        kpi_cols[3].metric("Emotion Weighted F1", f"{e_f1:.2f}%")
+        kpi_cols[0].metric("BiLSTM Accuracy", f"{s_acc:.2f}%", help="BiLSTM-Attention evaluated on 4,959 IMDB test reviews")
+        kpi_cols[1].metric("BiLSTM Weighted F1", f"{s_f1:.2f}%")
+    if textcnn_eval:
+        t_acc = textcnn_eval["test_metrics"]["accuracy"] * 100
+        t_f1 = textcnn_eval["test_metrics"]["f1_weighted"] * 100
+        kpi_cols[2].metric("TextCNN Accuracy", f"{t_acc:.2f}%", help="TextCNN (Kernels 2,3,4) evaluated on 4,959 IMDB test reviews")
+        kpi_cols[3].metric("TextCNN Weighted F1", f"{t_f1:.2f}%")
 
     st.divider()
 
-    st.markdown("#### Convergence History")
+    st.markdown("#### Convergence History (BiLSTM Sentiment)")
     col_hist1, col_hist2 = st.columns(2)
 
     if sent_eval and "history" in sent_eval:
@@ -773,7 +837,7 @@ with tab_analytics:
         })
 
         with col_hist1:
-            st.markdown("###### Sentiment: Accuracy per Epoch")
+            st.markdown("###### BiLSTM: Accuracy per Epoch")
             c_acc = (
                 alt.Chart(sent_curve_df)
                 .mark_line(point=True)
@@ -791,7 +855,7 @@ with tab_analytics:
             st.altair_chart(c_acc, use_container_width=True)
 
         with col_hist2:
-            st.markdown("###### Sentiment: Cross-Entropy Loss per Epoch")
+            st.markdown("###### BiLSTM: Cross-Entropy Loss per Epoch")
             c_loss = (
                 alt.Chart(sent_curve_df)
                 .mark_line(point=True)
@@ -810,35 +874,43 @@ with tab_analytics:
 
     st.divider()
     st.markdown("#### Test Set Confusion Matrices")
-    col_cm1, col_cm2 = st.columns(2)
+    col_cm1, col_cm2, col_cm3 = st.columns(3)
 
     sent_cm_path = ROOT / "outputs/results/confusion_matrix.png"
     if not sent_cm_path.exists():
         sent_cm_path = ROOT / "confusion_matrix.png"
 
+    textcnn_cm_path = ROOT / "outputs/textcnn/results/confusion_matrix.png"
     emo_cm_path = ROOT / "outputs/emotion/results/confusion_matrix.png"
 
     with col_cm1:
-        st.markdown("###### Sentiment Network (IMDB Test Set)")
+        st.markdown("###### BiLSTM Attention (IMDB Test)")
         if sent_cm_path.exists():
-            st.image(str(sent_cm_path), caption="Normalized Confusion Matrix (Binary Sentiment)", use_container_width=True)
+            st.image(str(sent_cm_path), caption="BiLSTM Confusion Matrix (90.02% Acc)", use_container_width=True)
         else:
-            st.info("Sentiment confusion matrix graphic is not available.")
+            st.info("BiLSTM confusion matrix graphic not available.")
 
     with col_cm2:
-        st.markdown("###### Emotion Network (GoEmotions Test Set)")
-        if emo_cm_path.exists():
-            st.image(str(emo_cm_path), caption="Normalized Confusion Matrix (7-Class Emotion)", use_container_width=True)
+        st.markdown("###### TextCNN 1D-CNN (IMDB Test)")
+        if textcnn_cm_path.exists():
+            st.image(str(textcnn_cm_path), caption="TextCNN Confusion Matrix (86.73% Acc)", use_container_width=True)
         else:
-            st.info("Emotion confusion matrix graphic is not available.")
+            st.info("TextCNN confusion matrix graphic not available.")
+
+    with col_cm3:
+        st.markdown("###### Emotion Network (GoEmotions Test)")
+        if emo_cm_path.exists():
+            st.image(str(emo_cm_path), caption="Emotion Confusion Matrix (73.44% Acc)", use_container_width=True)
+        else:
+            st.info("Emotion confusion matrix graphic not available.")
 
     st.divider()
     st.markdown("#### Detailed Classification Reports")
-    col_cr1, col_cr2 = st.columns(2)
+    col_cr1, col_cr2, col_cr3 = st.columns(3)
 
     with col_cr1:
         if sent_eval and "classification_report" in sent_eval:
-            st.markdown("###### Sentiment Model Metrics")
+            st.markdown("###### BiLSTM Sentiment Metrics")
             report = sent_eval["classification_report"]
             rows = []
             for cls in ["negative", "positive", "macro avg", "weighted avg"]:
@@ -854,11 +926,28 @@ with tab_analytics:
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     with col_cr2:
+        if textcnn_eval and "classification_report" in textcnn_eval:
+            st.markdown("###### TextCNN Sentiment Metrics")
+            report = textcnn_eval["classification_report"]
+            rows = []
+            for cls in ["negative", "positive", "macro avg", "weighted avg"]:
+                if cls in report:
+                    d = report[cls]
+                    rows.append({
+                        "Class": cls.capitalize(),
+                        "Precision": f"{d['precision']*100:.2f}%",
+                        "Recall": f"{d['recall']*100:.2f}%",
+                        "F1-Score": f"{d['f1-score']*100:.2f}%",
+                        "Support": int(d.get("support", 0)),
+                    })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    with col_cr3:
         if emo_eval and "classification_report" in emo_eval:
             st.markdown("###### Emotion Model Metrics")
             report = emo_eval["classification_report"]
             rows = []
-            for cls in emo_eval["class_names"] + ["macro avg", "weighted avg"]:
+            for cls in emo_eval.get("class_names", []) + ["macro avg", "weighted avg"]:
                 if cls in report:
                     d = report[cls]
                     rows.append({
@@ -875,56 +964,141 @@ with tab_analytics:
 # TAB 4: ARCHITECTURE & THEORY
 # ==========================================
 with tab_architecture:
-    st.markdown("### Model Architecture and Theory")
+    st.markdown("### Model Architectures and Empirical Comparison")
 
-    st.markdown(
-        """
-        #### Network Pipeline
-        The classification pipeline couples a bidirectional recurrent structure with a parameterised additive attention layer to pool variable-length token representations into fixed-dimensional context vectors.
-        """
-    )
+    st.markdown("#### 1. Empirical Comparison: BiLSTM vs TextCNN")
+    st.caption("Benchmarked on the identical held-out test split of 4,959 reviews from IMDB Dataset (80/10/10 split, seed=42).")
 
-    st.code(
-        """
+    comparison_data = eval_data.get("comparison")
+    if comparison_data and "models" in comparison_data:
+        b_m = comparison_data["models"]["BiLSTM_Attention"]
+        c_m = comparison_data["models"]["TextCNN"]
+        comp_rows = [
+            {
+                "Evaluation Dimension": "Test Accuracy",
+                "BiLSTM + Attention": f"{b_m['accuracy']*100:.2f}%",
+                "TextCNN (1D-CNN)": f"{c_m['accuracy']*100:.2f}%",
+                "Advantage / Delta": f"+{(b_m['accuracy']-c_m['accuracy'])*100:.2f}% (BiLSTM)",
+            },
+            {
+                "Evaluation Dimension": "Test Macro F1",
+                "BiLSTM + Attention": f"{b_m['f1_macro']*100:.2f}%",
+                "TextCNN (1D-CNN)": f"{c_m['f1_macro']*100:.2f}%",
+                "Advantage / Delta": f"+{(b_m['f1_macro']-c_m['f1_macro'])*100:.2f}% (BiLSTM)",
+            },
+            {
+                "Evaluation Dimension": "Test Weighted F1",
+                "BiLSTM + Attention": f"{b_m['f1_weighted']*100:.2f}%",
+                "TextCNN (1D-CNN)": f"{c_m['f1_weighted']*100:.2f}%",
+                "Advantage / Delta": f"+{(b_m['f1_weighted']-c_m['f1_weighted'])*100:.2f}% (BiLSTM)",
+            },
+            {
+                "Evaluation Dimension": "Total Parameters",
+                "BiLSTM + Attention": f"{b_m['parameters']:,}",
+                "TextCNN (1D-CNN)": f"{c_m['parameters']:,}",
+                "Advantage / Delta": f"-{((b_m['parameters']-c_m['parameters'])/b_m['parameters'])*100:.1f}% lighter (TextCNN)",
+            },
+            {
+                "Evaluation Dimension": "Disk Model Checkpoint",
+                "BiLSTM + Attention": f"{b_m['model_size_mb']:.1f} MB",
+                "TextCNN (1D-CNN)": f"{c_m['model_size_mb']:.1f} MB",
+                "Advantage / Delta": f"-{((b_m['model_size_mb']-c_m['model_size_mb'])/b_m['model_size_mb'])*100:.1f}% smaller (TextCNN)",
+            },
+            {
+                "Evaluation Dimension": "Inference Latency (per sample)",
+                "BiLSTM + Attention": f"{b_m['latency_ms_per_sample']:.3f} ms",
+                "TextCNN (1D-CNN)": f"{c_m['latency_ms_per_sample']:.3f} ms",
+                "Advantage / Delta": f"~{b_m['latency_ms_per_sample']/(c_m['latency_ms_per_sample']+1e-6):.1f}x faster (TextCNN)",
+            },
+            {
+                "Evaluation Dimension": "Explainability Support",
+                "BiLSTM + Attention": "Attention Heatmaps + LIME + SHAP",
+                "TextCNN (1D-CNN)": "LIME + Kernel SHAP",
+                "Advantage / Delta": "BiLSTM provides native attention",
+            },
+        ]
+        st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    col_arch1, col_arch2 = st.columns(2)
+
+    with col_arch1:
+        st.markdown("#### BiLSTM + Additive Attention")
+        st.markdown(
+            "Couples a bidirectional recurrent structure with a parameterized additive attention layer to pool variable-length token representations into fixed-dimensional context vectors."
+        )
+        st.code(
+            """
 Input Tokens (x_1, ..., x_T)
         |
-Embedding Layer           (Vocabulary Dimension -> 128-d, Dropout = 0.35)
+Embedding Layer           (Vocab -> 128-d, Dropout = 0.35)
         |
-Bidirectional LSTM        (Hidden Dimension = 128; Forward + Backward = 256-d states h_t)
+Bidirectional LSTM        (Hidden = 128; Fwd + Bwd = 256-d states h_t)
         |
-Masked Additive Attention (Computes alignment scores e_t and normalized weights alpha_t)
+Masked Additive Attention (Computes alignment scores e_t and weights alpha_t)
         |
 Context Vector Pooling    (c = SUM(alpha_t * h_t))
         |
-Linear Dense Projection   (256-d -> Number of Target Classes)
+Linear Dense Projection   (256-d -> 2 Classes)
         |
-Softmax Normalization     (Inference probability distribution)
-        """,
-        language="text",
-    )
+Softmax Normalization     (P(Positive), P(Negative))
+            """,
+            language="text",
+        )
+        st.markdown(
+            """
+            **Formulation**:
+            $$e_t = v^T \\tanh(W h_t + b)$$
+            $$\\alpha_t = \\frac{\\exp(e_t)}{\\sum_{k=1}^T \\exp(e_k)}, \\quad c = \\sum_{t=1}^T \\alpha_t h_t$$
+            """
+        )
+
+    with col_arch2:
+        st.markdown("#### TextCNN (Parallel 1D Convolutions)")
+        st.markdown(
+            "Employs parallel 1D convolutional filter banks of varying kernel sizes (2, 3, 4) to extract invariant local n-gram patterns, followed by temporal global max-pooling."
+        )
+        st.code(
+            """
+Input Tokens (x_1, ..., x_T)
+        |
+Word Embedding Layer      (Vocab -> 128-d)
+        |
+Parallel 1D Convolutions  (Kernels: 2, 3, 4; 64 filters each)
+        |
+ReLU Non-linearity        (f(x) = max(0, x))
+        |
+1D Global Max-Pooling     (Reduces sequence length -> 64-d per kernel)
+        |
+Concatenation             (3 x 64 = 192-d unified feature vector)
+        |
+Dropout Layer             (p = 0.5 for regularization)
+        |
+Fully Connected Layer     (192 -> 64-d, ReLU)
+        |
+Output Projection         (64 -> 2 Classes, Softmax)
+            """,
+            language="text",
+        )
+        st.markdown(
+            """
+            **Formulation**:
+            $$c_i = \\text{ReLU}(\\mathbf{w} \\ast \\mathbf{x}_{i:i+k-1} + b)$$
+            $$\\hat{c} = \\max_{i} \\{c_i\\}, \\quad \\mathbf{z} = [\\hat{c}^{(k=2)} \\parallel \\hat{c}^{(k=3)} \\parallel \\hat{c}^{(k=4)}]$$
+            """
+        )
+
+    st.divider()
 
     st.markdown(
         """
-        #### Mathematical Formulation
-        1. **Attention Energy Calculation**:
-        $$e_t = v^T \\tanh(W h_t + b)$$
-        Where $h_t \\in \\mathbb{R}^{2d}$ represents the bidirectional state at token index $t$, $W \\in \\mathbb{R}^{a \\times 2d}$ denotes the trainable projection matrix, and $v \\in \\mathbb{R}^a$ is the attention scoring vector.
-
-        2. **Masked Softmax Normalization**:
-        $$\\alpha_t = \\frac{\\exp(e_t)}{\\sum_{k=1}^T \\exp(e_k)}$$
-        Padding tokens ($\\text{<PAD>}$) are assigned a large negative mask ($-10^9$) prior to softmax to ensure zero attention mass is allocated to padding.
-
-        3. **Context Aggregation**:
-        $$c = \\sum_{t=1}^T \\alpha_t h_t$$
-
-        ---
-
         #### Interpretability Methodologies Summary
         | Framework | Paradigm | Mechanism | Interpretative Scope |
         | :--- | :--- | :--- | :--- |
-        | **Additive Attention** | Model-Intrinsic | Normalizes pooling weights directly inside network computation graph. | Token-level focus during context aggregation. |
-        | **LIME** | Model-Agnostic Surrogate | Fits an interpretable local ridge regressor on perturbed text samples. | Directional feature weights (supporting vs. opposing). |
-        | **Kernel SHAP** | Cooperative Game Theory | Computes Shapley values against a marginal masked background distribution. | Fair attribution satisfying efficiency and consistency axioms. |
+        | **Additive Attention** | Model-Intrinsic (BiLSTM) | Normalizes pooling weights directly inside network computation graph. | Token-level focus during context aggregation. |
+        | **LIME** | Model-Agnostic (Both Models) | Fits an interpretable local ridge regressor on perturbed text samples. | Directional feature weights (supporting vs. opposing). |
+        | **Kernel SHAP** | Cooperative Game Theory (Both) | Computes Shapley values against a marginal masked background distribution. | Fair attribution satisfying efficiency and consistency axioms. |
         """
     )
 

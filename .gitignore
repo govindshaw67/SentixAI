@@ -33,3 +33,13 @@ outputs/emotion/*
 !outputs/vae/results/unusual_reviews.csv
 !outputs/vae/results/vae_training_curves.png
 !outputs/vae/results/vae_evaluation.json
+!outputs/textcnn/
+outputs/textcnn/*
+!outputs/textcnn/artifacts/
+!outputs/textcnn/artifacts/textcnn.pt
+!outputs/textcnn/artifacts/vocabulary.json
+!outputs/textcnn/results/
+!outputs/textcnn/results/evaluation.json
+!outputs/textcnn/results/confusion_matrix.png
+!outputs/textcnn/results/training_curves.png
+!outputs/textcnn/results/model_comparison.json

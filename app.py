@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from sentixai_inference import SavedTextClassifier
 from sentixai_xai import attention_explanation, lime_explanation, shap_explanation
+from textcnn_inference import SavedTextCNNClassifier
 
 ROOT = Path(__file__).resolve().parent
 DOWNLOADS = ROOT / "outputs" / "batch_results"
@@ -40,6 +41,7 @@ app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 class PredictionRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     methods: list[str] = Field(default_factory=lambda: ["attention"])
+    model_type: str = Field(default="bilstm", description="Sentiment model architecture: 'bilstm' or 'textcnn'")
     include_emotion: bool = True
     lime_samples: int = Field(default=60, ge=10, le=1000)
     shap_samples: int = Field(default=40, ge=10, le=300)
@@ -48,6 +50,14 @@ class PredictionRequest(BaseModel):
 @lru_cache
 def sentiment_model() -> SavedTextClassifier:
     return SavedTextClassifier(ROOT / "outputs/artifacts", "bilstm_attention.pt")
+
+
+@lru_cache
+def textcnn_sentiment_model() -> SavedTextCNNClassifier | None:
+    path = ROOT / "outputs/textcnn/artifacts/textcnn.pt"
+    if path.exists():
+        return SavedTextCNNClassifier(ROOT / "outputs/textcnn/artifacts", "textcnn.pt")
+    return None
 
 
 @lru_cache
@@ -96,8 +106,32 @@ def dashboard() -> FileResponse:
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "sentiment_model": (ROOT / "outputs/artifacts/bilstm_attention.pt").exists(),
-            "emotion_model": (ROOT / "outputs/emotion/artifacts/emotion_bilstm_attention.pt").exists()}
+    return {
+        "status": "ok",
+        "sentiment_model_bilstm": (ROOT / "outputs/artifacts/bilstm_attention.pt").exists(),
+        "sentiment_model_textcnn": (ROOT / "outputs/textcnn/artifacts/textcnn.pt").exists(),
+        "emotion_model": (ROOT / "outputs/emotion/artifacts/emotion_bilstm_attention.pt").exists(),
+    }
+
+
+@app.get("/api/models")
+def list_models() -> dict:
+    return {
+        "sentiment_models": [
+            {
+                "id": "bilstm",
+                "name": "BiLSTM + Additive Attention",
+                "type": "Recurrent with Softmax Attention",
+                "ready": (ROOT / "outputs/artifacts/bilstm_attention.pt").exists(),
+            },
+            {
+                "id": "textcnn",
+                "name": "TextCNN (1D-CNN)",
+                "type": "Convolutional with Kernels (2, 3, 4)",
+                "ready": (ROOT / "outputs/textcnn/artifacts/textcnn.pt").exists(),
+            },
+        ]
+    }
 
 
 def load_results(path: Path) -> dict:
@@ -110,15 +144,37 @@ def analytics() -> dict:
     try:
         sentiment = load_results(ROOT / "outputs/results/evaluation.json")
         emotion = load_results(ROOT / "outputs/emotion/results/evaluation.json")
-        return {
-            "models": {
-                "sentiment": {"accuracy": sentiment["test_metrics"]["accuracy"], "f1": sentiment["test_metrics"]["f1_weighted"],
-                              "history": sentiment["history"], "classes": sentiment["class_names"]},
-                "emotion": {"accuracy": emotion["test_metrics"]["accuracy"], "f1": emotion["test_metrics"]["f1_weighted"],
-                            "history": emotion["history"], "classes": emotion["class_names"]},
+        models_data = {
+            "sentiment": {
+                "accuracy": sentiment["test_metrics"]["accuracy"],
+                "f1": sentiment["test_metrics"]["f1_weighted"],
+                "history": sentiment["history"],
+                "classes": sentiment["class_names"],
             },
+            "emotion": {
+                "accuracy": emotion["test_metrics"]["accuracy"],
+                "f1": emotion["test_metrics"]["f1_weighted"],
+                "history": emotion["history"],
+                "classes": emotion["class_names"],
+            },
+        }
+
+        # Include TextCNN analytics if available
+        textcnn_eval_path = ROOT / "outputs/textcnn/results/evaluation.json"
+        if textcnn_eval_path.exists():
+            textcnn_eval = load_results(textcnn_eval_path)
+            models_data["textcnn"] = {
+                "accuracy": textcnn_eval["test_metrics"]["accuracy"],
+                "f1": textcnn_eval["test_metrics"]["f1_weighted"],
+                "history": textcnn_eval["history"],
+                "classes": textcnn_eval["class_names"],
+            }
+
+        return {
+            "models": models_data,
             "images": {
                 "sentiment_confusion_matrix": "/assets/sentiment/confusion-matrix",
+                "textcnn_confusion_matrix": "/assets/textcnn/confusion-matrix",
                 "emotion_confusion_matrix": "/assets/emotion/confusion-matrix",
             },
         }
@@ -128,7 +184,11 @@ def analytics() -> dict:
 
 @app.get("/assets/{model}/confusion-matrix", include_in_schema=False)
 def confusion_matrix_image(model: str) -> FileResponse:
-    paths = {"sentiment": ROOT / "outputs/results/confusion_matrix.png", "emotion": ROOT / "outputs/emotion/results/confusion_matrix.png"}
+    paths = {
+        "sentiment": ROOT / "outputs/results/confusion_matrix.png",
+        "textcnn": ROOT / "outputs/textcnn/results/confusion_matrix.png",
+        "emotion": ROOT / "outputs/emotion/results/confusion_matrix.png",
+    }
     if model not in paths or not paths[model].exists():
         raise HTTPException(status_code=404, detail="Confusion matrix is not available.")
     return FileResponse(paths[model], media_type="image/png")
@@ -137,11 +197,28 @@ def confusion_matrix_image(model: str) -> FileResponse:
 @app.post("/api/predict")
 def predict(request: PredictionRequest) -> dict:
     try:
-        sentiment_classifier = sentiment_model()
-        sentiment = sentiment_classifier.predict(request.text)
+        model_choice = (request.model_type or "bilstm").lower()
+        if model_choice == "textcnn":
+            textcnn_clf = textcnn_sentiment_model()
+            if textcnn_clf is None:
+                # Graceful fallback to BiLSTM if TextCNN weights are not present
+                sentiment_classifier = sentiment_model()
+                sentiment = sentiment_classifier.predict(request.text)
+                sentiment["model_used"] = "BiLSTM (Fallback: TextCNN weights not found)"
+            else:
+                sentiment = textcnn_clf.predict(request.text)
+                sentiment["model_used"] = "TextCNN"
+                sentiment["attention_tokens"] = []  # CNN uses global max-pooling instead of attention
+                sentiment_classifier = textcnn_clf
+        else:
+            sentiment_classifier = sentiment_model()
+            sentiment = sentiment_classifier.predict(request.text)
+            sentiment["model_used"] = "BiLSTM + Additive Attention"
+
         response = {
             "sentiment": sentiment,
             "sentiment_confidence": sentiment["confidence"],
+            "model_type": sentiment.get("model_used", "BiLSTM"),
             "explanation": {"sentiment": explain(sentiment_classifier, sentiment, request.text, request.methods, request)},
         }
         if request.include_emotion:
