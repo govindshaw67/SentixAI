@@ -18,6 +18,7 @@ import torch
 
 from sentixai_inference import SavedTextClassifier
 from sentixai_xai import attention_explanation, lime_explanation, shap_explanation
+from vae_inference import VAEAnomalyDetector
 
 # Path definitions
 ROOT = Path(__file__).resolve().parent
@@ -224,12 +225,13 @@ with st.sidebar:
 
 
 # Tabs Navigation
-tab_predict, tab_batch, tab_analytics, tab_architecture, tab_deploy = st.tabs([
+tab_predict, tab_batch, tab_analytics, tab_architecture, tab_deploy, tab_vae = st.tabs([
     "Inference and Interpretability",
     "Batch CSV Processing",
     "Evaluation and Analytics",
     "Architecture and Methodology",
     "Deployment Documentation",
+    "Unusual Review Detection",
 ])
 
 
@@ -952,6 +954,295 @@ with tab_deploy:
            - Streamlit Cloud will parse `requirements.txt`, load the committed checkpoints, and generate your live URL.
         """
     )
+
+
+# ==========================================
+# TAB 6: UNUSUAL REVIEW DETECTION (VAE)
+# Module 5 – Generative Models
+# ==========================================
+
+@st.cache_resource(show_spinner="Loading VAE anomaly detector...")
+def get_vae_detector():
+    """Load the trained ReviewVAE checkpoint if available."""
+    vae_dir = ROOT / "outputs/vae/artifacts"
+    required = ["vae_model.pt", "vae_vectorizer.pkl", "vae_scaler.pkl"]
+    if all((vae_dir / f).exists() for f in required):
+        return VAEAnomalyDetector(vae_dir)
+    return None
+
+
+with tab_vae:
+    st.markdown("### Unusual Review Detection")
+    st.markdown(
+        "This tab uses a **Variational Autoencoder (VAE)** trained on review text to detect "
+        "anomalous or unusual reviews. The VAE learns a compressed latent representation of "
+        "normal review language. Reviews that the decoder cannot reconstruct well receive a "
+        "high anomaly score and are flagged as *unusual*."
+    )
+
+    # Architecture explainer
+    with st.expander("How the VAE works (Module 5 – Generative Models)", expanded=False):
+        st.code(
+            """
+Input Review
+      |
+  TF-IDF Vectorisation  (up to 5,000 token features, sublinear TF)
+      |
+  Min-Max Normalisation  → feature vector x ∈ [0, 1]^d
+      |
+ ┌──────────────────────────────────────┐
+ │  ENCODER                             │
+ │  Linear → LayerNorm → ReLU           │
+ │  Linear → ReLU                       │
+ │      ↓               ↓               │
+ │   FC_µ(x)       FC_logσ²(x)         │
+ └──────────────────────────────────────┘
+      |
+  Reparameterisation:  z = µ + ε·σ   (ε ~ N(0,I))
+      |
+ ┌──────────────────────────────────────┐
+ │  DECODER                             │
+ │  Linear → ReLU                       │
+ │  Linear → LayerNorm → ReLU           │
+ │  Linear → Sigmoid → x̂ ∈ [0,1]^d    │
+ └──────────────────────────────────────┘
+      |
+  Reconstruction Error = MSE(x̂, x)   ← Anomaly Score
+  Loss = Recon Loss + β · KL(N(µ,σ²) ‖ N(0,I))
+            """,
+            language="text",
+        )
+        st.markdown(
+            """
+**Key concepts demonstrated:**
+| Concept | Implementation |
+|---------|----------------|
+| Generative model | ReviewVAE generates plausible review feature vectors |
+| Encoder & Decoder | Two-layer MLP with LayerNorm |
+| Latent space | 32-dimensional Gaussian latent variable z |
+| Reparameterisation | `z = µ + ε·σ` enables gradient flow through sampling |
+| Reconstruction loss | Mean-squared error between input and reconstruction |
+| KL divergence | Regularises latent space toward N(0, I) |
+| Anomaly detection | High reconstruction error → review is *unusual* |
+"""
+        )
+
+    # ── Load model ───────────────────────────────────────────────────────────
+    vae_detector = get_vae_detector()
+
+    if vae_detector is None:
+        st.warning(
+            "**VAE checkpoint not found.**  "
+            "Train the model first with the command below, then restart the app."
+        )
+        st.code(
+            "python train_vae.py --csv data/sample_batch_reviews.csv --epochs 30",
+            language="bash",
+        )
+        st.info(
+            "The training script produces `outputs/vae/artifacts/vae_model.pt` "
+            "along with the fitted vectoriser and scaler. "
+            "Re-open this tab after training completes."
+        )
+    else:
+        threshold = vae_detector.threshold
+
+        st.success(
+            f"VAE loaded successfully · "
+            f"Anomaly threshold: **{threshold:.6f}** "
+            f"(top {vae_detector.anomaly_top_k_pct:.1f}% of training scores)"
+        )
+        st.divider()
+
+        # ── Single review scoring ─────────────────────────────────────────
+        st.markdown("#### Single Review Anomaly Check")
+
+        sample_presets_vae = {
+            "Custom Input": "",
+            "Normal positive": "Great product, works exactly as expected.",
+            "Normal negative": "Battery life is disappointing and does not last a day.",
+            "Spam-like": "BUY NOW!!! BEST DEAL EVER 99% OFF LIMITED OFFER CLICK HERE!!!",
+            "Off-topic / Gibberish": "asdfgh jkl qwerty zxcvbn lorem ipsum dolor sit amet.",
+            "Adversarial": "This product is simultaneously the best and the worst thing I ever bought.",
+        }
+
+        selected_vae_preset = st.selectbox(
+            "Example reviews:",
+            options=list(sample_presets_vae.keys()),
+            index=2,
+            key="vae_preset",
+        )
+        default_vae_text = sample_presets_vae[selected_vae_preset] or ""
+
+        vae_input = st.text_area(
+            "Review text:",
+            value=default_vae_text,
+            height=90,
+            placeholder="Paste any review here …",
+            key="vae_single_input",
+        )
+
+        if st.button("Check for anomaly", type="primary", key="vae_single_btn"):
+            if not vae_input.strip():
+                st.warning("Please enter a review.")
+            else:
+                result = vae_detector.score_single(vae_input.strip())
+                score = result["anomaly_score"]
+                is_unusual = result["is_unusual"]
+
+                col_score, col_badge = st.columns([3, 1])
+                with col_score:
+                    st.metric(
+                        label="Reconstruction Error (Anomaly Score)",
+                        value=f"{score:.6f}",
+                        delta=f"threshold: {threshold:.6f}",
+                        delta_color="off",
+                    )
+                with col_badge:
+                    if is_unusual:
+                        st.markdown(
+                            "<div style='background:#ef4444;color:white;padding:14px 18px;"
+                            "border-radius:8px;font-weight:700;font-size:1.1rem;margin-top:12px;"
+                            "text-align:center'>⚠ UNUSUAL</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            "<div style='background:#10b981;color:white;padding:14px 18px;"
+                            "border-radius:8px;font-weight:700;font-size:1.1rem;margin-top:12px;"
+                            "text-align:center'>✓ NORMAL</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                st.caption(
+                    "Score = mean squared error between the original TF-IDF vector and "
+                    "the VAE reconstruction.  Higher score → less typical review."
+                )
+
+        st.divider()
+
+        # ── Batch CSV scoring ────────────────────────────────────────────
+        st.markdown("#### Batch Anomaly Detection")
+        st.markdown(
+            "Upload a CSV containing a **`review`** column.  "
+            "Every review will be scored and the results (with anomaly flags) can be downloaded."
+        )
+
+        col_upload_vae, col_sample_vae = st.columns([3, 2])
+        with col_sample_vae:
+            sample_csv_vae = ROOT / "data/sample_batch_reviews.csv"
+            if not sample_csv_vae.exists():
+                sample_csv_vae = ROOT / "sample_batch_reviews.csv"
+            if sample_csv_vae.exists():
+                st.download_button(
+                    "Download sample CSV",
+                    sample_csv_vae.read_text(encoding="utf-8"),
+                    file_name="sample_batch_reviews.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+                load_sample_vae = st.button("Load sample CSV", use_container_width=True, key="vae_load_sample")
+            else:
+                load_sample_vae = False
+
+        with col_upload_vae:
+            uploaded_vae = st.file_uploader(
+                "Upload CSV (max 10,000 rows):",
+                type=["csv"],
+                key="vae_uploader",
+            )
+
+        batch_df_vae = None
+        if uploaded_vae is not None:
+            try:
+                batch_df_vae = pd.read_csv(uploaded_vae)
+            except Exception as e:
+                st.error(f"Could not read CSV: {e}")
+        elif load_sample_vae and sample_csv_vae.exists():
+            batch_df_vae = pd.read_csv(sample_csv_vae)
+            st.info("Loaded sample CSV.")
+
+        if batch_df_vae is not None:
+            if "review" not in batch_df_vae.columns:
+                st.error("CSV must contain a column named **`review`**.")
+            elif batch_df_vae.empty:
+                st.warning("The uploaded CSV is empty.")
+            else:
+                reviews_vae = (
+                    batch_df_vae["review"]
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                    .tolist()
+                )
+                reviews_vae = [r for r in reviews_vae if r]
+
+                if st.button("Run anomaly detection", type="primary", key="vae_batch_btn"):
+                    with st.spinner("Scoring reviews …"):
+                        scored_df = vae_detector.score_batch(reviews_vae)
+
+                    n_unusual = int(scored_df["is_unusual"].sum())
+                    pct_unusual = n_unusual / len(scored_df) * 100
+
+                    # Metrics row
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Total Reviews", len(scored_df))
+                    m2.metric("Flagged Unusual", n_unusual)
+                    m3.metric("Unusual %", f"{pct_unusual:.1f}%")
+                    m4.metric("Threshold", f"{threshold:.5f}")
+
+                    st.divider()
+
+                    # Score distribution chart
+                    st.markdown("##### Anomaly Score Distribution")
+                    import altair as alt
+                    hist_df = scored_df[["anomaly_score", "is_unusual"]].copy()
+                    hist_df["Category"] = hist_df["is_unusual"].map(
+                        {True: "Unusual", False: "Normal"}
+                    )
+                    chart_hist = (
+                        alt.Chart(hist_df)
+                        .mark_bar(opacity=0.75, binSpacing=0)
+                        .encode(
+                            x=alt.X(
+                                "anomaly_score:Q",
+                                bin=alt.Bin(maxbins=40),
+                                title="Reconstruction Error",
+                            ),
+                            y=alt.Y("count()", title="Count"),
+                            color=alt.Color(
+                                "Category:N",
+                                scale=alt.Scale(
+                                    domain=["Normal", "Unusual"],
+                                    range=["#10b981", "#ef4444"],
+                                ),
+                            ),
+                            tooltip=["Category", "count()"],
+                        )
+                        .properties(height=240, title="Score distribution (red = flagged)")
+                    )
+                    threshold_rule = (
+                        alt.Chart(pd.DataFrame({"threshold": [threshold]}))
+                        .mark_rule(color="#f97316", strokeDash=[6, 3], strokeWidth=2)
+                        .encode(x="threshold:Q")
+                    )
+                    st.altair_chart(chart_hist + threshold_rule, use_container_width=True)
+
+                    # Flagged reviews table
+                    st.markdown("##### Flagged Unusual Reviews")
+                    unusual_shown = scored_df[scored_df["is_unusual"]].head(50).copy()
+                    unusual_shown.index = range(1, len(unusual_shown) + 1)
+                    st.dataframe(unusual_shown, use_container_width=True)
+
+                    # Full results download
+                    csv_out = scored_df.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "Download full scored results (CSV)",
+                        csv_out,
+                        file_name="vae_anomaly_results.csv",
+                        mime="text/csv",
+                        type="primary",
+                    )
 
 st.divider()
 st.caption(
