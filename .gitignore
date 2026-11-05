@@ -25,3 +25,11 @@ outputs/emotion/*
 !outputs/emotion/results/evaluation.json
 !outputs/emotion/results/confusion_matrix.png
 !outputs/emotion/results/training_curves.png
+!outputs/vae/artifacts/
+!outputs/vae/artifacts/vae_model.pt
+!outputs/vae/artifacts/vae_vectorizer.pkl
+!outputs/vae/artifacts/vae_scaler.pkl
+!outputs/vae/results/
+!outputs/vae/results/unusual_reviews.csv
+!outputs/vae/results/vae_training_curves.png
+!outputs/vae/results/vae_evaluation.json

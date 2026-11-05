@@ -1,0 +1,5 @@
+review,anomaly_score,is_unusual
+"Great product, works exactly as expected.",0.234334,True
+Worst customer service and very slow delivery.,0.230208,False
+Battery life is disappointing and does not last a day.,0.220024,False
+Camera quality is amazing and the photos look beautiful.,0.207398,False

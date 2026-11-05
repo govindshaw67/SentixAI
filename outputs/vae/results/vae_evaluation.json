@@ -1,0 +1,56 @@
+{
+  "best_val_loss": 0.24484284222126007,
+  "anomaly_threshold": 0.23371493816375732,
+  "total_reviews": 4,
+  "flagged_reviews": 1,
+  "history": {
+    "train_loss": [
+      0.29530513286590576,
+      0.26732245087623596,
+      0.25371086597442627
+    ],
+    "train_recon": [
+      0.26717376708984375,
+      0.2540437877178192,
+      0.24237406253814697
+    ],
+    "train_kl": [
+      0.02813136577606201,
+      0.013278660364449024,
+      0.011336810886859894
+    ],
+    "val_loss": [
+      0.24806824326515198,
+      0.24525977671146393,
+      0.24484284222126007
+    ],
+    "val_recon": [
+      0.2346310019493103,
+      0.23396632075309753,
+      0.2343338131904602
+    ],
+    "val_kl": [
+      0.013437245041131973,
+      0.011293457821011543,
+      0.010509032756090164
+    ]
+  },
+  "config": {
+    "csv": "C:\\Users\\soham\\.gemini\\antigravity\\scratch\\SentixAI\\data\\sample_batch_reviews.csv",
+    "text_column": "review",
+    "output_dir": "C:\\Users\\soham\\.gemini\\antigravity\\scratch\\SentixAI\\outputs\\vae",
+    "max_features": 5000,
+    "hidden_dim": 256,
+    "latent_dim": 32,
+    "beta": 1.0,
+    "batch_size": 64,
+    "epochs": 3,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "val_split": 0.1,
+    "anomaly_top_k": 5.0,
+    "patience": 5,
+    "seed": 42,
+    "device": "cpu"
+  }
+}
