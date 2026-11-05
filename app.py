@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
+import os
+
+# Limit thread pool allocations to prevent memory crashes on 512MB RAM cloud tiers
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+import gc
 from functools import lru_cache
 import json
 from pathlib import Path
 from uuid import uuid4
 
 import pandas as pd
+import torch
+
+torch.set_num_threads(1)
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,8 +41,8 @@ class PredictionRequest(BaseModel):
     text: str = Field(min_length=1, max_length=5000)
     methods: list[str] = Field(default_factory=lambda: ["attention"])
     include_emotion: bool = True
-    lime_samples: int = Field(default=80, ge=10, le=1000)
-    shap_samples: int = Field(default=50, ge=10, le=300)
+    lime_samples: int = Field(default=60, ge=10, le=1000)
+    shap_samples: int = Field(default=40, ge=10, le=300)
 
 
 @lru_cache
